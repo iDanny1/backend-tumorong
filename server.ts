@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import cors from 'cors';
 
 const __filename = fileURLToPath(import.meta.url);
+app.use(cors()); 
 const __dirname = path.dirname(__filename);
 
 async function startServer() {
