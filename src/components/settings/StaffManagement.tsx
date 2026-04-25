@@ -13,6 +13,7 @@ import {
   Search
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { api } from '../../lib/api';
 
 interface StaffMember {
   _id: string;
@@ -48,8 +49,7 @@ export const StaffManagement: React.FC = () => {
 
   const fetchStaff = async () => {
     try {
-      const response = await fetch('/api/staff');
-      const data = await response.json();
+      const data = await api.get('/api/staff');
       setStaff(data);
     } catch (error) {
       console.error('Failed to fetch staff:', error);
@@ -60,42 +60,39 @@ export const StaffManagement: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const url = editingStaff ? `/api/staff/${editingStaff._id}` : '/api/staff';
-    const method = editingStaff ? 'PUT' : 'POST';
-
     try {
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-
-      if (response.ok) {
-        fetchStaff();
-        setShowModal(false);
-        setEditingStaff(null);
-        setFormData({
-          username: '',
-          password: '',
-          name: '',
-          role: 'sales',
-          email: '',
-          phone: '',
-          active: true
-        });
+      if (editingStaff) {
+        await api.put(`/api/staff/${editingStaff._id}`, formData);
+      } else {
+        await api.post('/api/staff', formData);
       }
+
+      fetchStaff();
+      setShowModal(false);
+      setEditingStaff(null);
+      setFormData({
+        username: '',
+        password: '',
+        name: '',
+        role: 'sales',
+        email: '',
+        phone: '',
+        active: true
+      });
     } catch (error) {
       console.error('Failed to save staff:', error);
+      alert('Không thể lưu thông tin nhân viên');
     }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Bạn có chắc chắn muốn xóa nhân viên này?')) return;
     try {
-      await fetch(`/api/staff/${id}`, { method: 'DELETE' });
+      await api.delete(`/api/staff/${id}`);
       fetchStaff();
     } catch (error) {
       console.error('Failed to delete staff:', error);
+      alert('Không thể xóa nhân viên');
     }
   };
 

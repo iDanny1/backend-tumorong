@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Megaphone, Plus, Search, Calendar, ChevronRight, Trash2, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Campaign } from '../../types';
+import { api } from '../../lib/api';
 
 export const CampaignManagement: React.FC = () => {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -24,8 +25,7 @@ export const CampaignManagement: React.FC = () => {
   const fetchCampaigns = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/campaigns');
-      const data = await res.json();
+      const data = await api.get('/api/campaigns');
       setCampaigns(data);
     } catch (err) {
       console.error('Error fetching campaigns:', err);
@@ -37,15 +37,9 @@ export const CampaignManagement: React.FC = () => {
   const handleSubmit = async () => {
     if (!newCampaign.name) return;
     try {
-      const res = await fetch('/api/campaigns', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newCampaign)
-      });
-      if (res.ok) {
-        setShowModal(false);
-        fetchCampaigns();
-      }
+      await api.post('/api/campaigns', newCampaign);
+      setShowModal(false);
+      fetchCampaigns();
     } catch (err) {
       console.error('Error creating campaign:', err);
     }

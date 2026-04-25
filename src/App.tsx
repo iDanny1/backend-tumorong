@@ -26,6 +26,7 @@ import { ShippingManagement } from './components/shipping/ShippingManagement';
 import { Login } from './components/auth/Login';
 import { CustomerUI } from './components/CustomerUI';
 import { Order, User, Category, Product, Customer } from './types';
+import { api } from './lib/api';
 
 export default function App() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -172,8 +173,7 @@ export default function App() {
 
   const fetchCategories = async () => {
     try {
-      const res = await fetch('/api/categories');
-      const data = await res.json();
+      const data = await api.get('/api/categories');
       setCategories(data);
     } catch (err) {
       console.error("Error fetching categories:", err);
@@ -183,9 +183,7 @@ export default function App() {
   const fetchOrders = async (retries = 3) => {
     setLoading(true);
     try {
-      const res = await fetch('/api/orders');
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
+      const data = await api.get('/api/orders');
       setOrders(data);
     } catch (err) {
       console.error("Error fetching orders:", err);
@@ -200,8 +198,7 @@ export default function App() {
 
   const fetchProducts = async () => {
     try {
-      const res = await fetch('/api/products');
-      let data = await res.json();
+      const data = await api.get('/api/products');
       // Đảm bảo sắp xếp: Nêu bật trước, sau đó đến ngày tạo mới nhất
       const sortedData = [...data].sort((a, b) => {
         if (a.isFeatured && !b.isFeatured) return -1;
@@ -218,25 +215,15 @@ export default function App() {
     e.preventDefault();
     try {
       console.log('Sending login request...', loginForm);
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(loginForm)
-      });
+      const userData = await api.post('/api/login', loginForm);
       
-      if (res.ok) {
-        const userData = await res.json();
-        setUser(userData);
-        setIsLoggedIn(true);
-        localStorage.setItem('admin_user', JSON.stringify(userData));
-        setActiveMenu(userData.role === 'warehouse' ? 'Quản lý kho' : 'Đơn hàng');
-      } else {
-        const error = await res.json().catch(() => ({ error: 'Lỗi không xác định từ máy chủ' }));
-        alert(error.error || error.message || 'Tài khoản hoặc mật khẩu không đúng!');
-      }
-    } catch (err) {
+      setUser(userData);
+      setIsLoggedIn(true);
+      localStorage.setItem('admin_user', JSON.stringify(userData));
+      setActiveMenu(userData.role === 'warehouse' ? 'Quản lý kho' : 'Đơn hàng');
+    } catch (err: any) {
       console.error('Login connection error:', err);
-      alert('Lỗi kết nối máy chủ! Vui lòng kiểm tra lại kết nối mạng hoặc server.');
+      alert(err.message || 'Sai tài khoản hoặc mật khẩu!');
     }
   };
 
@@ -258,29 +245,23 @@ export default function App() {
         price: Number(newProduct.price)
       };
 
-      const res = await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(productToSave)
+      await api.post('/api/products', productToSave);
+      setShowProductModal(false);
+      setNewProduct({
+        name: '',
+        price: 0,
+        categoryIds: [],
+        categoryNames: [],
+        description: '',
+        images: [],
+        status: 'Còn hàng',
+        stock: 10000,
+        type: 'Vật lý',
+        platform: 'Mini App',
+        active: true,
+        isFeatured: false
       });
-      if (res.ok) {
-        setShowProductModal(false);
-        setNewProduct({
-          name: '',
-          price: 0,
-          categoryIds: [],
-          categoryNames: [],
-          description: '',
-          images: [],
-          status: 'Còn hàng',
-          stock: 10000,
-          type: 'Vật lý',
-          platform: 'Mini App',
-          active: true,
-          isFeatured: false
-        });
-        fetchProducts();
-      }
+      fetchProducts();
     } catch (err) {
       alert('Lỗi khi thêm sản phẩm');
     }
@@ -288,15 +269,9 @@ export default function App() {
 
   const handleUpdateProduct = async (updatedProduct: Product) => {
     try {
-      const res = await fetch(`/api/products/${updatedProduct._id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedProduct)
-      });
-      if (res.ok) {
-        setEditingProduct(null);
-        fetchProducts();
-      }
+      await api.put(`/api/products/${updatedProduct._id}`, updatedProduct);
+      setEditingProduct(null);
+      fetchProducts();
     } catch (err) {
       alert('Lỗi khi cập nhật sản phẩm');
     }
@@ -304,12 +279,8 @@ export default function App() {
 
   const handleDeleteProduct = async (id: string) => {
     try {
-      const res = await fetch(`/api/products/${id}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        fetchProducts();
-      }
+      await api.delete(`/api/products/${id}`);
+      fetchProducts();
     } catch (err) {
       alert('Lỗi khi xóa sản phẩm');
     }
@@ -318,26 +289,22 @@ export default function App() {
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const method = isEditingCategory ? 'PUT' : 'POST';
-      const url = isEditingCategory ? `/api/categories/${newCategory._id}` : '/api/categories';
-      
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newCategory)
-      });
-      if (res.ok) {
-        setShowCategoryModal(false);
-        setIsEditingCategory(false);
-        setNewCategory({
-          name: '',
-          icon: 'https://img.icons8.com/color/144/new-product.png',
-          images: [],
-          description: '',
-          active: true
-        } as any);
-        fetchCategories();
+      if (isEditingCategory) {
+        await api.put(`/api/categories/${newCategory._id}`, newCategory);
+      } else {
+        await api.post('/api/categories', newCategory);
       }
+      
+      setShowCategoryModal(false);
+      setIsEditingCategory(false);
+      setNewCategory({
+        name: '',
+        icon: 'https://img.icons8.com/color/144/new-product.png',
+        images: [],
+        description: '',
+        active: true
+      } as any);
+      fetchCategories();
     } catch (err) {
       alert('Lỗi khi lưu danh mục');
     }
@@ -345,12 +312,8 @@ export default function App() {
 
   const handleDeleteCategory = async (id: string) => {
     try {
-      const res = await fetch(`/api/categories/${id}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        fetchCategories();
-      }
+      await api.delete(`/api/categories/${id}`);
+      fetchCategories();
     } catch (err) {
       alert('Lỗi khi xóa danh mục');
     }
@@ -358,14 +321,8 @@ export default function App() {
 
   const handleToggleCategory = async (category: Category) => {
     try {
-      const res = await fetch(`/api/categories/${category._id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ active: category.active === false })
-      });
-      if (res.ok) {
-        fetchCategories();
-      }
+      await api.put(`/api/categories/${category._id}`, { active: category.active === false });
+      fetchCategories();
     } catch (err) {
       alert('Lỗi khi cập nhật trạng thái danh mục');
     }
@@ -374,20 +331,15 @@ export default function App() {
   const updateOrderStatus = async (orderId: string, updates: string | Partial<Order>) => {
     try {
       const updateData = typeof updates === 'string' ? { status: updates } : updates;
-      const res = await fetch(`/api/orders/${orderId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updateData)
-      });
-      if (res.ok) {
-        setShowOrderModal(false);
-        fetchOrders();
-        // Cập nhật lại selectedOrder để UI phản hồi ngay lập tức
-        if (selectedOrder && selectedOrder._id === orderId) {
-          setSelectedOrder(prev => prev ? { ...prev, ...updateData } : null);
-          // Thông báo thành công
-          alert('Cập nhật đơn hàng thành công!');
-        }
+      await api.put(`/api/orders/${orderId}`, updateData);
+      
+      setShowOrderModal(false);
+      fetchOrders();
+      // Cập nhật lại selectedOrder để UI phản hồi ngay lập tức
+      if (selectedOrder && selectedOrder._id === orderId) {
+        setSelectedOrder(prev => prev ? { ...prev, ...updateData } : null);
+        // Thông báo thành công
+        alert('Cập nhật đơn hàng thành công!');
       }
     } catch (err) {
       alert('Lỗi khi cập nhật trạng thái đơn hàng');
@@ -397,14 +349,10 @@ export default function App() {
   const deleteOrder = async (orderId: string) => {
     if (!window.confirm('Bạn có chắc chắn muốn xóa đơn hàng này?')) return;
     try {
-      const res = await fetch(`/api/orders/${orderId}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        setSelectedOrder(null);
-        fetchOrders();
-        alert('Đã xóa đơn hàng thành công!');
-      }
+      await api.delete(`/api/orders/${orderId}`);
+      setSelectedOrder(null);
+      fetchOrders();
+      alert('Đã xóa đơn hàng thành công!');
     } catch (err) {
       alert('Lỗi khi xóa đơn hàng');
     }
@@ -414,11 +362,7 @@ export default function App() {
     try {
       const product = products.find(p => p._id === productId);
       if (product) {
-        await fetch(`/api/products/${productId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ views: (product.views || 0) + 1 })
-        });
+        await api.put(`/api/products/${productId}`, { views: (product.views || 0) + 1 });
         fetchProducts();
       }
     } catch (err) {
@@ -435,14 +379,8 @@ export default function App() {
 
   const handleUpdateProductStock = async (productId: string, warehouseStock: { [key: string]: number }, totalStock: number) => {
     try {
-      const res = await fetch(`/api/products/${productId}/stock`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ warehouseStock, stock: totalStock })
-      });
-      if (res.ok) {
-        fetchProducts();
-      }
+      await api.patch(`/api/products/${productId}/stock`, { warehouseStock, stock: totalStock });
+      fetchProducts();
     } catch (err) {
       console.error("Error updating product stock:", err);
     }

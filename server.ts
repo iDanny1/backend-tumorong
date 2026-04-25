@@ -6,19 +6,22 @@ import { fileURLToPath } from 'url';
 import cors from 'cors';
 
 const __filename = fileURLToPath(import.meta.url);
-
 const __dirname = path.dirname(__filename);
 
-// 1. Phải có dòng này TRƯỚC để tạo ra "app"
-const app = express(); 
-
-// 2. Sau đó mới được dùng app.use
-app.use(cors()); 
-app.use(express.json());
+const app = express(); // Declare app at the top level scope
 
 async function startServer() {
-  const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000;
+
+  // Middleware - Use CORS first as requested
+  app.use(cors());
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    next();
+  });
 
   // Cấu hình Giao Hàng Nhanh (GHN)
   const GHN_TOKEN = process.env.GHN_TOKEN || "c0e79cba-3ef4-11f1-9107-4a16704feeb7";
@@ -35,46 +38,94 @@ async function startServer() {
   const articleDB = new Datastore({ filename: path.join(process.cwd(), 'news.db'), autoload: true });
   const campaignDB = new Datastore({ filename: path.join(process.cwd(), 'campaigns.db'), autoload: true });
 
-  // Middleware
-  app.use(cors());
-  app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-    next();
-  });
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-  // Seed Data (Admin & Dummy Orders & News)
+  // Seed Data (Admin, Products, Categories, Orders & News)
   try {
-    console.log('Initializing user database...');
-    const adminUser = await new Promise((resolve, reject) => {
-      userDB.findOne({ username: 'admin' }, (err, doc) => {
-        if (err) reject(err);
-        else resolve(doc);
+    console.log('Checking database status...');
+    
+    // Seed Categories
+    const categoryCount: any = await new Promise((resolve, reject) => {
+      categoryDB.count({}, (err, count) => err ? reject(err) : resolve(count));
+    });
+
+    if (categoryCount === 0) {
+      console.log('Seeding categories...');
+      const dummyCategories = [
+        { name: 'Sâm Ngọc Linh', icon: 'https://img.icons8.com/color/144/natural-food.png', active: true, createdAt: new Date().toISOString() },
+        { name: 'Dược Liệu Quý', icon: 'https://img.icons8.com/color/144/pill.png', active: true, createdAt: new Date().toISOString() }
+      ];
+      await new Promise((resolve, reject) => {
+        categoryDB.insert(dummyCategories, (err, docs) => err ? reject(err) : resolve(docs));
       });
+    }
+
+    // Seed Products
+    const productCount: any = await new Promise((resolve, reject) => {
+      productDB.count({}, (err, count) => err ? reject(err) : resolve(count));
+    });
+
+    if (productCount === 0) {
+      console.log('Seeding products...');
+      const dummyProducts = [
+        {
+          name: "Sâm Ngọc Linh Tu Mơ Rông (Loại 1)",
+          price: 15000000,
+          description: "Sâm Ngọc Linh chuẩn vùng trồng Tu Mơ Rông, Kon Tum.",
+          images: ["https://picsum.photos/seed/product1/600/600"],
+          status: 'Còn hàng',
+          stock: 50,
+          isFeatured: true,
+          active: true,
+          createdAt: new Date().toISOString()
+        }
+      ];
+      await new Promise((resolve, reject) => {
+        productDB.insert(dummyProducts, (err, docs) => err ? reject(err) : resolve(docs));
+      });
+    }
+
+    // Seed Staff Accounts (Admin, Warehouse, Sales)
+    const staffCount: any = await new Promise((resolve, reject) => {
+      userDB.count({}, (err, count) => err ? reject(err) : resolve(count));
     });
     
-    if (!adminUser) {
-      console.log('Seeding admin user...');
-      await new Promise((resolve, reject) => {
-        userDB.insert({
+    if (staffCount === 0) {
+      console.log('Seeding default staff accounts...');
+      const defaultUsers = [
+        {
           username: 'admin',
-          password: '123',
+          password: 'admin123',
           name: 'Quản trị viên',
           role: 'admin',
           active: true,
           createdAt: new Date().toISOString()
-        }, (err, doc) => {
-          if (err) reject(err);
-          else resolve(doc);
+        },
+        {
+          username: 'kho01',
+          password: '123',
+          name: 'Nhân viên kho 01',
+          role: 'warehouse',
+          active: true,
+          createdAt: new Date().toISOString()
+        },
+        {
+          username: 'sale01',
+          password: '123',
+          name: 'Nhân viên bán hàng 01',
+          role: 'sales',
+          active: true,
+          createdAt: new Date().toISOString()
+        }
+      ];
+      
+      for (const u of defaultUsers) {
+        await new Promise((resolve, reject) => {
+          userDB.insert(u, (err, doc) => err ? reject(err) : resolve(doc));
         });
-      });
-      console.log('Admin user seeded.');
-    } else {
-      console.log('Admin user already exists.');
+      }
+      console.log('Staff accounts seeded.');
     }
   } catch (err) {
-    console.error('Error during user database initialization:', err);
+    console.error('Seeding error:', err);
   }
 
   try {
@@ -926,7 +977,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  app.listen(Number(PORT), '0.0.0.0', () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
   });
 }

@@ -15,6 +15,7 @@ import { Order } from '../../types';
 import { cn } from '../../lib/utils';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import { api } from '../../lib/api';
 
 export const ShippingManagement: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -34,11 +35,8 @@ export const ShippingManagement: React.FC = () => {
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/orders');
-      if (res.ok) {
-        const data = await res.json();
-        setOrders(data);
-      }
+      const data = await api.get('/api/orders');
+      setOrders(data);
     } catch (err) {
       console.error('Error fetching orders:', err);
     } finally {
@@ -51,21 +49,20 @@ export const ShippingManagement: React.FC = () => {
 
     try {
       // 1. Chuẩn bị dữ liệu theo chuẩn GHN (đơn giản hóa)
-      // Lưu ý: Thực tế cần mapping chi tiết địa chỉ (DistrictId, WardCode)
       const ghnPayload = {
-        payment_type_id: 2, // 2: Người nhận trả phí (thường là COD)
+        payment_type_id: 2,
         note: `Đơn hàng ${order.orderId || order._id}`,
         required_note: "CHOXEMHANGGTC",
         to_name: order.customerName || order.customer?.name || "Khách hàng",
         to_phone: order.customerPhone || order.customer?.phone || "",
         to_address: order.customer?.address || "",
-        to_ward_name: "Phường 1", // Cần field thật để mapDistrict/Ward
+        to_ward_name: "Phường 1",
         to_district_name: "Quận 1",
-        weight: 500, // Grams
+        weight: 500,
         length: 10,
         width: 10,
         height: 10,
-        service_type_id: 2, // 2: E-commerce service
+        service_type_id: 2,
         service_id: 0,
         cod_amount: order.paymentMethod === 'COD' ? order.total : 0,
         items: order.products?.map(p => ({
@@ -75,36 +72,26 @@ export const ShippingManagement: React.FC = () => {
         })) || []
       };
 
-      const res = await fetch('/api/ghn/create-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ghnPayload)
-      });
-
-      const result = await res.json();
+      const result = await api.post('/api/ghn/create-order', ghnPayload);
 
       if (result.code === 200 || result.data?.order_code) {
         const orderCode = result.data.order_code;
         
-        // 2. Cập nhật trạng thái trong hệ thống của mình
-        await fetch(`/api/orders/${order._id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            status: 'Đang giao',
-            shippingUnit: 'GHN',
-            order_code: orderCode // Lưu mã vận đơn
-          })
+        // 2. Cập nhật trạng thái trong hệ thống
+        await api.put(`/api/orders/${order._id}`, { 
+          status: 'Đang giao',
+          shippingUnit: 'GHN',
+          order_code: orderCode
         });
 
         alert(`Đẩy đơn thành công! Mã vận đơn GHN: ${orderCode}`);
-        fetchOrders(); // Tải lại danh sách
+        fetchOrders();
       } else {
         alert(`Lỗi từ GHN: ${result.message || 'Không xác định'}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error pushing to GHN:', err);
-      alert('Lỗi khi kết nối với hệ thống GHN');
+      alert(err.message || 'Lỗi khi kết nối với hệ thống GHN');
     }
   };
 
@@ -112,29 +99,23 @@ export const ShippingManagement: React.FC = () => {
     if (!order.order_code) return;
     
     try {
-      const res = await fetch(`/api/ghn/status/${order.order_code}`);
-      const result = await res.json();
+      const result = await api.get(`/api/ghn/status/${order.order_code}`);
       
       if (result.success) {
         const newStatus = result.statusName;
         
-        // Cập nhật trạng thái trong hệ thống của mình
-        await fetch(`/api/orders/${order._id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            status: newStatus
-          })
+        await api.put(`/api/orders/${order._id}`, { 
+          status: newStatus
         });
 
         alert(`Đồng bộ thành công! Trạng thái hiện tại: ${newStatus}`);
-        fetchOrders(); // Tải lại danh sách
+        fetchOrders();
       } else {
         alert(`Lỗi khi đồng bộ: ${result.message || 'Không xác định'}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error syncing with GHN:', err);
-      alert('Lỗi khi kết nối với hệ thống GHN');
+      alert(err.message || 'Lỗi khi kết nối với hệ thống GHN');
     }
   };
 

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Product, Order } from '../types';
 import { ShoppingCart, Eye, X, Plus, Minus, CheckCircle2 } from 'lucide-react';
+import { api } from '../lib/api';
 
 interface CustomerUIProps {
   products: Product[];
@@ -79,18 +80,12 @@ export const CustomerUI: React.FC<CustomerUIProps> = ({
     };
 
     try {
-      const res = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newOrder)
-      });
+      await api.post('/api/orders', newOrder);
 
-      if (res.ok) {
-        setCart([]);
-        setShowCheckout(false);
-        setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 5000);
-      }
+      setCart([]);
+      setShowCheckout(false);
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 5000);
     } catch (err) {
       alert('Lỗi khi đặt hàng. Vui lòng thử lại.');
     }

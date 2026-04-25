@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { NumberInput } from '../ui/NumberInput';
+import { api } from '../../lib/api';
 
 interface Voucher {
   _id?: string;
@@ -59,8 +60,7 @@ export const VoucherManagement: React.FC = () => {
   const fetchVouchers = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/vouchers');
-      const data = await res.json();
+      const data = await api.get('/api/vouchers');
       setVouchers(data);
     } catch (err) {
       console.error('Error fetching vouchers:', err);
@@ -72,43 +72,35 @@ export const VoucherManagement: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const url = editingVoucher ? `/api/vouchers/${editingVoucher._id}` : '/api/vouchers';
-      const method = editingVoucher ? 'PUT' : 'POST';
-      
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-
-      if (res.ok) {
-        setShowModal(false);
-        setEditingVoucher(null);
-        setFormData({
-          code: '',
-          description: '',
-          discountAmount: 0,
-          minOrderValue: 0,
-          usageLimit: 100,
-          startDate: new Date().toISOString().split('T')[0],
-          endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          isActive: true
-        });
-        fetchVouchers();
+      if (editingVoucher) {
+        await api.put(`/api/vouchers/${editingVoucher._id}`, formData);
       } else {
-        const error = await res.json();
-        alert(error.message || 'Có lỗi xảy ra');
+        await api.post('/api/vouchers', formData);
       }
-    } catch (err) {
-      alert('Lỗi kết nối server');
+
+      setShowModal(false);
+      setEditingVoucher(null);
+      setFormData({
+        code: '',
+        description: '',
+        discountAmount: 0,
+        minOrderValue: 0,
+        usageLimit: 100,
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        isActive: true
+      });
+      fetchVouchers();
+    } catch (err: any) {
+      alert(err.message || 'Có lỗi xảy ra');
     }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Bạn có chắc chắn muốn xóa mã giảm giá này?')) return;
     try {
-      const res = await fetch(`/api/vouchers/${id}`, { method: 'DELETE' });
-      if (res.ok) fetchVouchers();
+      await api.delete(`/api/vouchers/${id}`);
+      fetchVouchers();
     } catch (err) {
       alert('Lỗi khi xóa voucher');
     }

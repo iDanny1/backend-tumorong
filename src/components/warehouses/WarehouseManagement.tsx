@@ -15,6 +15,7 @@ import {
 import { Warehouse, Product } from '../../types';
 import { NumberInput } from '../ui/NumberInput';
 import { cn } from '../../lib/utils';
+import { api } from '../../lib/api';
 
 interface WarehouseManagementProps {
   products: Product[];
@@ -47,8 +48,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onU
   const fetchWarehouses = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/warehouses');
-      const data = await res.json();
+      const data = await api.get('/api/warehouses');
       setWarehouses(data);
       if (!selectedWarehouseId) {
         setSelectedWarehouseId(TOTAL_WAREHOUSE_ID);
@@ -63,16 +63,10 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onU
   const handleAddWarehouse = async () => {
     if (!newWarehouse.name) return;
     try {
-      const res = await fetch('/api/warehouses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newWarehouse)
-      });
-      if (res.ok) {
-        setShowAddModal(false);
-        setNewWarehouse({ name: '', location: '' });
-        fetchWarehouses();
-      }
+      await api.post('/api/warehouses', newWarehouse);
+      setShowAddModal(false);
+      setNewWarehouse({ name: '', location: '' });
+      fetchWarehouses();
     } catch (err) {
       console.error("Error adding warehouse:", err);
     }
@@ -81,11 +75,9 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onU
   const handleDeleteWarehouse = async (id: string) => {
     if (!confirm('Bạn có chắc chắn muốn xóa kho này?')) return;
     try {
-      const res = await fetch(`/api/warehouses/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        if (selectedWarehouseId === id) setSelectedWarehouseId(null);
-        fetchWarehouses();
-      }
+      await api.delete(`/api/warehouses/${id}`);
+      if (selectedWarehouseId === id) setSelectedWarehouseId(null);
+      fetchWarehouses();
     } catch (err) {
       console.error("Error deleting warehouse:", err);
     }

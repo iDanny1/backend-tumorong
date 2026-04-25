@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Clock, Eye, ChevronRight, BookOpen } from 'lucide-react';
 import { Article } from '../../types';
 import DOMPurify from 'dompurify';
+import { api } from '../../lib/api';
 
 export const NewsPublicUI: React.FC = () => {
   const [articles, setArticles] = useState<Article[]>([]);
@@ -14,8 +15,7 @@ export const NewsPublicUI: React.FC = () => {
 
   const fetchArticles = async () => {
     try {
-      const res = await fetch('/api/news');
-      const data = await res.json();
+      const data = await api.get('/api/news');
       // Only show published articles
       setArticles(data.filter((a: Article) => a.status === 'published'));
     } catch (err) {
@@ -27,8 +27,7 @@ export const NewsPublicUI: React.FC = () => {
 
   const readArticle = async (slug: string) => {
     try {
-      const res = await fetch(`/api/news/${slug}`);
-      const data = await res.json();
+      const data = await api.get(`/api/news/${slug}`);
       setSelectedArticle(data);
       // Update local views count for UI
       setArticles(prev => prev.map(a => a.slug === slug ? {...a, views: a.views + 1} : a));

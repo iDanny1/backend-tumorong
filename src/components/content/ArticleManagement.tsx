@@ -20,6 +20,7 @@ import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import { cn } from '../../lib/utils';
 import { Article } from '../../types';
+import { api } from '../../lib/api';
 
 export const ArticleManagement: React.FC = () => {
   const [articles, setArticles] = useState<Article[]>([]);
@@ -49,8 +50,7 @@ export const ArticleManagement: React.FC = () => {
   const fetchArticles = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/news');
-      const data = await res.json();
+      const data = await api.get('/api/news');
       setArticles(data);
     } catch (err) {
       console.error('Error fetching articles:', err);
@@ -86,48 +86,42 @@ export const ArticleManagement: React.FC = () => {
     }
 
     try {
-      const url = editingArticle ? `/api/news/${editingArticle._id}` : '/api/news';
-      const method = editingArticle ? 'PUT' : 'POST';
-      
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          status,
-          publishedAt: status === 'published' ? new Date().toISOString() : formData.publishedAt
-        })
-      });
+      const payload = {
+        ...formData,
+        status,
+        publishedAt: status === 'published' ? new Date().toISOString() : formData.publishedAt
+      };
 
-      if (res.ok) {
-        setShowEditor(false);
-        setEditingArticle(null);
-        setFormData({
-          title: '',
-          slug: '',
-          summary: '',
-          content: '',
-          thumbnail: '',
-          category: 'Tin tức',
-          author: 'Quản trị viên',
-          status: 'draft',
-          tags: []
-        });
-        fetchArticles();
+      if (editingArticle) {
+        await api.put(`/api/news/${editingArticle._id}`, payload);
       } else {
-        const error = await res.json();
-        alert(error.message || 'Có lỗi xảy ra');
+        await api.post('/api/news', payload);
       }
-    } catch (err) {
-      alert('Lỗi kết nối server');
+
+      setShowEditor(false);
+      setEditingArticle(null);
+      setFormData({
+        title: '',
+        slug: '',
+        summary: '',
+        content: '',
+        thumbnail: '',
+        category: 'Tin tức',
+        author: 'Quản trị viên',
+        status: 'draft',
+        tags: []
+      });
+      fetchArticles();
+    } catch (err: any) {
+      alert(err.message || 'Có lỗi xảy ra');
     }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Bạn có chắc chắn muốn xóa bài viết này?')) return;
     try {
-      const res = await fetch(`/api/news/${id}`, { method: 'DELETE' });
-      if (res.ok) fetchArticles();
+      await api.delete(`/api/news/${id}`);
+      fetchArticles();
     } catch (err) {
       alert('Lỗi khi xóa bài viết');
     }
