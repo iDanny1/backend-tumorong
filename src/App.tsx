@@ -217,6 +217,7 @@ export default function App() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      console.log('Sending login request...', loginForm);
       const res = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -230,11 +231,12 @@ export default function App() {
         localStorage.setItem('admin_user', JSON.stringify(userData));
         setActiveMenu(userData.role === 'warehouse' ? 'Quản lý kho' : 'Đơn hàng');
       } else {
-        const error = await res.json();
-        alert(error.message || 'Tài khoản hoặc mật khẩu không đúng!');
+        const error = await res.json().catch(() => ({ error: 'Lỗi không xác định từ máy chủ' }));
+        alert(error.error || error.message || 'Tài khoản hoặc mật khẩu không đúng!');
       }
     } catch (err) {
-      alert('Lỗi kết nối máy chủ!');
+      console.error('Login connection error:', err);
+      alert('Lỗi kết nối máy chủ! Vui lòng kiểm tra lại kết nối mạng hoặc server.');
     }
   };
 

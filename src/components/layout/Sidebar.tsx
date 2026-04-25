@@ -120,7 +120,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex items-center gap-2 overflow-hidden">
           <div className="w-10 h-10 bg-emerald-900 rounded-lg flex items-center justify-center shrink-0 overflow-hidden border border-emerald-800 shadow-sm">
             <img 
-              src="https://picsum.photos/seed/forest/200/200" 
+              src="https://i.postimg.cc/T1xYfrz8/Screenshot-2026-03-30-100430.png" 
               alt="Logo" 
               className="w-full h-full object-cover"
               referrerPolicy="no-referrer"
