@@ -1,0 +1,34 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  /* Tùy chỉnh màu sắc thương hiệu - Xanh đậm Forest Green */
+  --color-brand-primary: #064e3b; /* Emerald 900 - Xanh đậm sâm Ngọc Linh */
+  --color-brand-secondary: #065f46; /* Emerald 800 */
+  --color-dashboard-bg: #f0fdfa; /* Emerald 50 */
+  
+  /* Tùy chỉnh font chữ - Chuyển sang Roboto */
+  --font-sans: "Roboto", ui-sans-serif, system-ui, sans-serif;
+  
+  /* Tùy chỉnh cỡ chữ */
+  --font-size-8: 0.5rem; /* 8px */
+  --font-size-9: 0.5625rem; /* 9px */
+  --font-size-10: 0.625rem; /* 10px */
+  --font-size-11: 0.6875rem; /* 11px */
+  
+  /* Tùy chỉnh bo góc */
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+}
+
+/* Bạn có thể viết CSS thuần ở đây nếu cần */
+@layer base {
+  body {
+    @apply bg-dashboard-bg text-slate-900 antialiased;
+  }
+}
+
+/* Tạo các class tiện ích riêng */
+.glass-effect {
+  @apply bg-white/80 backdrop-blur-md border border-white/20;
+}

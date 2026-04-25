@@ -1,0 +1,5 @@
+{
+  "name": "Tu Mơ Rông",
+  "description": "Hệ thống quản trị Tu Mơ Rông với phân quyền nhân viên (Admin, Sales, Warehouse), quản lý kho và báo cáo doanh thu.",
+  "requestFramePermissions": []
+}

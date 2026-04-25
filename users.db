@@ -1,0 +1,2 @@
+{"username":"admin","password":"123","name":"Quản trị viên","role":"admin","active":true,"createdAt":"2026-04-12T01:27:53.426Z","_id":"IXbrDp6anAOMaHxi"}
+{"username":"nhân viên ecom","password":"123","name":"demo","role":"sales","email":"","phone":"","active":true,"createdAt":"2026-04-12T02:32:44.071Z","_id":"K2zYX1NNqkpaUMhR"}
