@@ -6,8 +6,15 @@ import { fileURLToPath } from 'url';
 import cors from 'cors';
 
 const __filename = fileURLToPath(import.meta.url);
-app.use(cors()); 
+
 const __dirname = path.dirname(__filename);
+
+// 1. Phải có dòng này TRƯỚC để tạo ra "app"
+const app = express(); 
+
+// 2. Sau đó mới được dùng app.use
+app.use(cors()); 
+app.use(express.json());
 
 async function startServer() {
   const app = express();
