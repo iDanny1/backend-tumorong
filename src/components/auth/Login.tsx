@@ -15,7 +15,7 @@ export const Login: React.FC<LoginProps> = ({ loginForm, setLoginForm, onLogin }
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-emerald-900 rounded-xl flex items-center justify-center overflow-hidden border border-emerald-800 shadow-lg">
               <img 
-                src="https://picsum.photos/seed/forest/200/200" 
+                src="https://i.postimg.cc/wBPJbxDv/Screenshot-2026-03-18-151902.png" 
                 alt="Logo" 
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
