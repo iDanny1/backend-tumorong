@@ -303,6 +303,25 @@ async function startServer() {
     }
   });
 
+  // Download DOCX Reports/Guides
+  app.get('/api/download/huong-dan-quan-tri', (req, res) => {
+    try {
+      const filePath = path.join(process.cwd(), 'HUONG_DAN_QUAN_TRI.docx');
+      res.download(filePath, 'HUONG_DAN_QUAN_TRI.docx');
+    } catch (err) {
+      res.status(500).json({ error: "Không thể tải file hướng dẫn" });
+    }
+  });
+
+  app.get('/api/download/bao-cao-he-thong', (req, res) => {
+    try {
+      const filePath = path.join(process.cwd(), 'BAO_CAO_HE_THONG.docx');
+      res.download(filePath, 'BAO_CAO_HE_THONG.docx');
+    } catch (err) {
+      res.status(500).json({ error: "Không thể tải file báo cáo" });
+    }
+  });
+
   // Orders
   app.get('/api/orders', async (req, res) => {
     try {
@@ -320,16 +339,49 @@ async function startServer() {
 
   app.post('/api/orders', async (req, res) => {
     try {
-      const { products, totalAmount, discountApplied, voucherCode, orderDate, status, customer } = req.body;
+      const { 
+        customerName, 
+        customerPhone, 
+        address, 
+        items, 
+        totalAmount, 
+        note, 
+        shippingMethod, 
+        shippingFee, 
+        paymentMethod, 
+        invoice,
+        zaloName, // Tên từ Zalo (trực tiếp)
+        zaloPhone, // SĐT từ Zalo (trực tiếp)
+        zaloTokenName, // Token tên mã hóa từ Zalo
+        zaloTokenPhone // Token SĐT mã hóa từ Zalo
+      } = req.body;
+
       const orderData = { 
-        products, totalAmount, total: totalAmount, discountApplied, voucherCode,
-        orderDate: orderDate || new Date().toISOString(),
-        status: status === 'pending' ? 'Chờ xác nhận' : (status || 'Chờ xác nhận'),
-        customer: customer || { name: 'Khách Zalo', phone: 'N/A', address: 'Zalo Mini App' },
-        customerName: (customer?.name) || 'Khách Zalo',
-        customerPhone: (customer?.phone) || 'N/A',
-        paymentMethod: 'Zalo Pay / COD',
-        paymentStatus: 'Chưa thanh toán',
+        // Ưu tiên thông tin định danh Zalo nếu có, không thì lấy từ ô nhập liệu
+        customerName: customerName || zaloName || zaloTokenName || 'Khách Zalo',
+        customerPhone: customerPhone || zaloPhone || zaloTokenPhone || 'N/A',
+        address: address || 'Zalo Mini App',
+        
+        // Dữ liệu sản phẩm (mapped từ items)
+        products: items || [], 
+        
+        // Tài chính
+        totalAmount: Number(totalAmount) || 0,
+        total: Number(totalAmount) || 0,
+        shippingFee: shippingFee || 0,
+        
+        // Vận chuyển & Giao dịch
+        note: note || '',
+        shippingMethod: shippingMethod || 'nhanh',
+        paymentMethod: paymentMethod || 'cod',
+        
+        // Hóa đơn doanh nghiệp
+        invoice: invoice || null,
+
+        // Trạng thái hệ thống
+        status: 'Chờ xác nhận',
+        paymentStatus: paymentMethod === 'cod' ? 'Chưa thanh toán' : 'Đã thanh toán',
+        platform: 'Zalo Mini App',
         createdAt: new Date().toISOString() 
       };
       
@@ -339,8 +391,11 @@ async function startServer() {
           else resolve(doc);
         });
       });
+      
+      console.log('✅ Đơn hàng Zalo mới:', (newDoc as any)._id);
       res.status(201).json({ message: "Chốt đơn thành công!", data: newDoc });
     } catch (err) {
+      console.error('❌ Lỗi tạo đơn hàng:', err);
       res.status(500).json({ error: "Không thể lưu đơn hàng" });
     }
   });
