@@ -1,4 +1,4 @@
-const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:3000';
+const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:8080';
 
 console.log('API Client initialized with Base URL:', API_URL);
 

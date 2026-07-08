@@ -11,7 +11,7 @@ const __dirname = path.dirname(__filename);
 const app = express(); // Declare app at the top level scope
 
 async function startServer() {
-  const PORT = process.env.PORT || 3000;
+  const PORT = process.env.PORT || 8080;
 
   // Middleware - Use CORS first as requested
   app.use(cors());
