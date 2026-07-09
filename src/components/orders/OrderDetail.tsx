@@ -22,6 +22,7 @@ import { Order } from '../../types';
 import { cn } from '../../lib/utils';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import { api } from '../../lib/api';
 
 interface OrderDetailProps {
   order: Order;
@@ -40,6 +41,54 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack, onUpdat
       status: currentStatus, 
       paymentStatus: paymentStatus 
     });
+  };
+
+  const handlePushToGHN = async () => {
+    if (!window.confirm(`Bạn có muốn đẩy đơn hàng ${order.orderId || order._id} sang Giao Hàng Nhanh?`)) return;
+
+    try {
+      const ghnPayload = {
+        payment_type_id: 2,
+        note: `Đơn hàng ${order.orderId || order._id}`,
+        required_note: "CHOXEMHANGKHONGTHU",
+        to_name: order.customerName || order.customer?.name || "Khách hàng",
+        to_phone: order.customerPhone || order.customer?.phone || "",
+        to_address: order.customer?.address || "",
+        to_ward_code: "20109",
+        to_district_id: 1442,
+        weight: 500,
+        length: 10,
+        width: 10,
+        height: 10,
+        service_type_id: 2,
+        service_id: 0,
+        cod_amount: order.paymentMethod === 'COD' ? order.total : 0,
+        items: order.products?.map(p => ({
+          name: p.name,
+          quantity: p.quantity,
+          weight: 200
+        })) || []
+      };
+
+      const result = await api.post('/api/ghn/create-order', ghnPayload);
+
+      if (result.code === 200 || result.data?.order_code) {
+        const orderCode = result.data.order_code;
+        
+        onUpdate(order._id, { 
+          status: 'Đang giao',
+          shippingUnit: 'GHN',
+          order_code: orderCode
+        });
+
+        alert(`Đẩy đơn thành công! Mã vận đơn GHN: ${orderCode}`);
+      } else {
+        alert(`Lỗi từ GHN: ${result.message || 'Không xác định'}`);
+      }
+    } catch (err: any) {
+      console.error('Error pushing to GHN:', err);
+      alert(err.message || 'Lỗi khi kết nối với hệ thống GHN');
+    }
   };
 
   const statuses = ['Chờ xác nhận', 'Đang chuẩn bị', 'Đang giao', 'Hoàn thành', 'Đã hủy'];
@@ -268,6 +317,13 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack, onUpdat
               >
                 <Bell className="w-4 h-4" />
                 Gửi thông báo cho khách
+              </button>
+              <button 
+                onClick={handlePushToGHN}
+                className="bg-white hover:bg-orange-50 text-orange-600 border border-orange-200 font-bold py-2.5 px-4 rounded text-[13px] transition-all active:scale-95 flex items-center gap-2"
+              >
+                <Truck className="w-4 h-4" />
+                Đẩy sang GHN
               </button>
               <button 
                 onClick={() => onDelete?.(order._id)}
