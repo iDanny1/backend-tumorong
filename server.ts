@@ -29,14 +29,14 @@ async function startServer() {
   const ZALO_SECRET_KEY = process.env.ZALO_SECRET_KEY || "G8yOT6fT2I7xOc6mV4Jw";
 
   // Khởi tạo Databases
-  const productDB = new Datastore({ filename: path.join(process.cwd(), 'products.db'), autoload: true });
-  const orderDB = new Datastore({ filename: path.join(process.cwd(), 'orders.db'), autoload: true });
-  const userDB = new Datastore({ filename: path.join(process.cwd(), 'users.db'), autoload: true });
-  const categoryDB = new Datastore({ filename: path.join(process.cwd(), 'categories.db'), autoload: true });
-  const warehouseDB = new Datastore({ filename: path.join(process.cwd(), 'warehouses.db'), autoload: true });
-  const voucherDB = new Datastore({ filename: path.join(process.cwd(), 'vouchers.db'), autoload: true });
-  const articleDB = new Datastore({ filename: path.join(process.cwd(), 'news.db'), autoload: true });
-  const campaignDB = new Datastore({ filename: path.join(process.cwd(), 'campaigns.db'), autoload: true });
+  const productDB = new Datastore({ filename: path.join(__dirname, 'products.db'), autoload: true });
+  const orderDB = new Datastore({ filename: path.join(__dirname, 'orders.db'), autoload: true });
+  const userDB = new Datastore({ filename: path.join(__dirname, 'users.db'), autoload: true });
+  const categoryDB = new Datastore({ filename: path.join(__dirname, 'categories.db'), autoload: true });
+  const warehouseDB = new Datastore({ filename: path.join(__dirname, 'warehouses.db'), autoload: true });
+  const voucherDB = new Datastore({ filename: path.join(__dirname, 'vouchers.db'), autoload: true });
+  const articleDB = new Datastore({ filename: path.join(__dirname, 'news.db'), autoload: true });
+  const campaignDB = new Datastore({ filename: path.join(__dirname, 'campaigns.db'), autoload: true });
 
   // Seed Data (Admin, Products, Categories, Orders & News)
   try {
@@ -306,7 +306,7 @@ async function startServer() {
   // Download DOCX Reports/Guides
   app.get('/api/download/huong-dan-quan-tri', (req, res) => {
     try {
-      const filePath = path.join(process.cwd(), 'HUONG_DAN_QUAN_TRI.docx');
+      const filePath = path.join(__dirname, 'HUONG_DAN_QUAN_TRI.docx');
       res.download(filePath, 'HUONG_DAN_QUAN_TRI.docx');
     } catch (err) {
       res.status(500).json({ error: "Không thể tải file hướng dẫn" });
@@ -315,7 +315,7 @@ async function startServer() {
 
   app.get('/api/download/bao-cao-he-thong', (req, res) => {
     try {
-      const filePath = path.join(process.cwd(), 'BAO_CAO_HE_THONG.docx');
+      const filePath = path.join(__dirname, 'BAO_CAO_HE_THONG.docx');
       res.download(filePath, 'BAO_CAO_HE_THONG.docx');
     } catch (err) {
       res.status(500).json({ error: "Không thể tải file báo cáo" });
@@ -1025,7 +1025,7 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = path.join(__dirname, 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
