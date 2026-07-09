@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import Datastore from '@seald-io/nedb';
 import path from 'path';
