@@ -52,12 +52,12 @@ export const ShippingManagement: React.FC = () => {
       const ghnPayload = {
         payment_type_id: 2,
         note: `Đơn hàng ${order.orderId || order._id}`,
-        required_note: "CHOXEMHANGGTC",
+        required_note: "CHOXEMHANGKHONGTHU",
         to_name: order.customerName || order.customer?.name || "Khách hàng",
         to_phone: order.customerPhone || order.customer?.phone || "",
         to_address: order.customer?.address || "",
-        to_ward_name: "Phường 1",
-        to_district_name: "Quận 1",
+        to_ward_code: "20109", // Phường Bến Nghé (Demo)
+        to_district_id: 1442, // Quận 1 (Demo)
         weight: 500,
         length: 10,
         width: 10,

@@ -965,53 +965,7 @@ async function startServer() {
     }
   });
 
-  // --- GHN SHIPPING APIS ---
-  app.post('/api/ghn/create-order', async (req, res) => {
-    try {
-      const ghnToken = process.env.GHN_TOKEN || 'c0e79cba-3ef4-11f1-9107-4a16704feeb7';
-      const shopId = process.env.GHN_SHOP_ID || '5945053';
 
-      const response = await fetch('https://dev-online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Token': ghnToken,
-          'ShopId': shopId
-        },
-        body: JSON.stringify(req.body)
-      });
-
-      const data = await response.json();
-      res.json(data);
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  });
-
-  app.get('/api/ghn/status/:order_code', async (req, res) => {
-    try {
-      const ghnToken = process.env.GHN_TOKEN || 'c0e79cba-3ef4-11f1-9107-4a16704feeb7';
-      const { order_code } = req.params;
-
-      const response = await fetch('https://dev-online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/detail', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Token': ghnToken
-        },
-        body: JSON.stringify({ order_code })
-      });
-
-      const data = await response.json();
-      if (data.code === 200) {
-        res.json({ success: true, status: data.data.status, statusName: data.data.status });
-      } else {
-        res.status(400).json({ success: false, message: data.message });
-      }
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  });
 
   // Catch-all API 404
   app.all('/api/*', (req, res) => {
