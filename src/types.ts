@@ -35,6 +35,8 @@ export interface Customer {
   _id: string;
   name: string;
   phone: string;
+  email?: string;
+  address?: string;
   avatar?: string;
   ordersCount: number;
   totalSpent: number;

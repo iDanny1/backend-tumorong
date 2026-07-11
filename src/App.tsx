@@ -39,73 +39,7 @@ export default function App() {
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [visitCount, setVisitCount] = useState<number>(0);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([
-    {
-      _id: '1',
-      name: 'Phạm Minh',
-      phone: '0385306910',
-      ordersCount: 0,
-      totalSpent: 0,
-      remainingPoints: 0,
-      totalPoints: 0,
-      tags: [],
-      createdAt: '2026-03-21T09:06:55Z',
-      lastAccess: '2026-03-21T17:22:37Z',
-      type: 'retail'
-    },
-    {
-      _id: '2',
-      name: 'Phi Hùng',
-      phone: '0974543740',
-      ordersCount: 0,
-      totalSpent: 0,
-      remainingPoints: 0,
-      totalPoints: 0,
-      tags: [],
-      createdAt: '2026-03-11T09:26:34Z',
-      lastAccess: '2026-03-19T10:09:18Z',
-      type: 'wholesale'
-    },
-    {
-      _id: '3',
-      name: 'Loan Cong',
-      phone: '0966478175',
-      ordersCount: 0,
-      totalSpent: 0,
-      remainingPoints: 0,
-      totalPoints: 0,
-      tags: [],
-      createdAt: '2026-02-28T12:33:21Z',
-      lastAccess: '2026-02-28T12:34:26Z',
-      type: 'retail'
-    },
-    {
-      _id: '4',
-      name: 'Tran Thanh Tuyen',
-      phone: '0866226077',
-      ordersCount: 0,
-      totalSpent: 0,
-      remainingPoints: 0,
-      totalPoints: 0,
-      tags: [],
-      createdAt: '2025-10-25T21:32:51Z',
-      lastAccess: '2026-02-02T12:20:36Z',
-      type: 'wholesale'
-    },
-    {
-      _id: '5',
-      name: 'Móm',
-      phone: '0325226279',
-      ordersCount: 0,
-      totalSpent: 0,
-      remainingPoints: 0,
-      totalPoints: 0,
-      tags: [],
-      createdAt: '2025-10-11T14:44:46Z',
-      lastAccess: '2025-10-11T14:44:46Z',
-      type: 'retail'
-    }
-  ]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [activeMenu, setActiveMenu] = useState('Đơn hàng');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showProductModal, setShowProductModal] = useState(false);
@@ -164,12 +98,22 @@ export default function App() {
       fetchOrders();
       fetchProducts();
       fetchCategories();
+      fetchCustomers();
 
       // Poll for new orders every 30 seconds
       const interval = setInterval(fetchOrders, 30000);
       return () => clearInterval(interval);
     }
   }, [isLoggedIn]);
+
+  const fetchCustomers = async () => {
+    try {
+      const data = await api.get('/api/customers');
+      setCustomers(data);
+    } catch (err) {
+      console.error("Error fetching customers:", err);
+    }
+  };
 
   const fetchCategories = async () => {
     try {
@@ -497,6 +441,7 @@ export default function App() {
           setSearchQuery={setSearchQuery}
           initialTab={activeMenu === 'Khách hàng - Mua sỉ' ? 'wholesale' : 'all'}
           onSelectCustomer={setSelectedCustomer}
+          onRefresh={fetchCustomers}
         />
       );
     }

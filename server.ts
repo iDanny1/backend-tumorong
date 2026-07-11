@@ -5,6 +5,11 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
+import multer from 'multer';
+import * as xlsx from 'xlsx';
+
+// Configure multer for memory storage (for Excel uploads)
+const upload = multer({ storage: multer.memoryStorage() });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -113,6 +118,37 @@ const userSchema = new Schema<IUser>({
   createdAt: { type: String, default: () => new Date().toISOString() }
 });
 const User: Model<IUser> = mongoose.model('User', userSchema);
+
+// Customer
+interface ICustomer extends Document {
+  name: string;
+  phone: string;
+  email?: string;
+  address?: string;
+  ordersCount?: number;
+  totalSpent?: number;
+  remainingPoints?: number;
+  totalPoints?: number;
+  tags?: string[];
+  type?: string;
+  lastAccess?: string;
+  createdAt: string;
+}
+const customerSchema = new Schema<ICustomer>({
+  name: String,
+  phone: { type: String, unique: true },
+  email: String,
+  address: String,
+  ordersCount: { type: Number, default: 0 },
+  totalSpent: { type: Number, default: 0 },
+  remainingPoints: { type: Number, default: 0 },
+  totalPoints: { type: Number, default: 0 },
+  tags: [String],
+  type: { type: String, default: 'retail' }, // retail, wholesale
+  lastAccess: { type: String, default: () => new Date().toISOString() },
+  createdAt: { type: String, default: () => new Date().toISOString() }
+});
+const Customer: Model<ICustomer> = mongoose.model('Customer', customerSchema);
 
 // Category
 interface ICategory extends Document {
@@ -488,6 +524,30 @@ async function startServer() {
 
       const newOrder = await Order.create(orderData);
       console.log('✅ Đơn hàng Zalo mới:', newOrder._id);
+
+      // --- TỰ ĐỘNG LƯU KHÁCH HÀNG ---
+      if (orderData.customerPhone && orderData.customerPhone !== 'N/A') {
+        const existingCustomer = await Customer.findOne({ phone: orderData.customerPhone });
+        if (existingCustomer) {
+          // Cộng dồn
+          existingCustomer.ordersCount = (existingCustomer.ordersCount || 0) + 1;
+          existingCustomer.totalSpent = (existingCustomer.totalSpent || 0) + orderData.totalAmount;
+          existingCustomer.lastAccess = new Date().toISOString();
+          await existingCustomer.save();
+        } else {
+          // Tạo mới (không overwrite sau này)
+          await Customer.create({
+            name: orderData.customerName,
+            phone: orderData.customerPhone,
+            address: orderData.address,
+            ordersCount: 1,
+            totalSpent: orderData.totalAmount,
+            type: 'retail',
+            lastAccess: new Date().toISOString()
+          });
+        }
+      }
+
       res.status(201).json({ message: "Chốt đơn thành công!", data: newOrder });
     } catch (err) {
       console.error('❌ Lỗi tạo đơn hàng:', err);
@@ -872,6 +932,169 @@ async function startServer() {
       res.download(filePath, 'BAO_CAO_HE_THONG.docx');
     } catch (err) {
       res.status(500).json({ error: "Không thể tải file báo cáo" });
+    }
+  });
+
+  // ========================
+  // CUSTOMER APIS
+  // ========================
+  app.get('/api/customers', async (req, res) => {
+    try {
+      const docs = await Customer.find({}).sort({ createdAt: -1 });
+      res.json(docs);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.get('/api/customers/:id', async (req, res) => {
+    try {
+      const doc = await Customer.findById(req.params.id);
+      if (!doc) return res.status(404).json({ message: "Không tìm thấy khách hàng" });
+      res.json(doc);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.post('/api/customers', async (req, res) => {
+    try {
+      const newCustomer = await Customer.create(req.body);
+      res.status(201).json(newCustomer);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.put('/api/customers/:id', async (req, res) => {
+    try {
+      const updated = await Customer.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      if (!updated) return res.status(404).json({ message: "Không tìm thấy khách hàng" });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.delete('/api/customers/:id', async (req, res) => {
+    try {
+      const deleted = await Customer.findByIdAndDelete(req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Không tìm thấy khách hàng" });
+      res.json({ message: "Xóa thành công" });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // ========================
+  // EXPORT / IMPORT APIS
+  // ========================
+  
+  // CUSTOMERS EXPORT
+  app.get('/api/customers/export', async (req, res) => {
+    try {
+      const customers = await Customer.find({}).lean();
+      const ws = xlsx.utils.json_to_sheet(customers.map(c => ({
+        ID: c._id.toString(),
+        Tên: c.name || '',
+        'Số điện thoại': c.phone || '',
+        'Địa chỉ': c.address || '',
+        'Email': c.email || '',
+        'Loại khách': c.type === 'wholesale' ? 'Sỉ' : 'Lẻ',
+        'Tổng đơn': c.ordersCount || 0,
+        'Tổng chi tiêu': c.totalSpent || 0,
+        'Ngày tạo': c.createdAt
+      })));
+      const wb = xlsx.utils.book_new();
+      xlsx.utils.book_append_sheet(wb, ws, "Khách hàng");
+      const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      res.setHeader('Content-Disposition', 'attachment; filename="customers.xlsx"');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.send(buffer);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // CUSTOMERS IMPORT
+  app.post('/api/customers/import', upload.single('file'), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "Không tìm thấy file" });
+      const wb = xlsx.read(req.file.buffer, { type: 'buffer' });
+      const wsname = wb.SheetNames[0];
+      const data: any[] = xlsx.utils.sheet_to_json(wb.Sheets[wsname]);
+      let count = 0;
+      for (const row of data) {
+        if (!row['Số điện thoại']) continue;
+        const phone = String(row['Số điện thoại']).replace(/\s/g, '');
+        const existing = await Customer.findOne({ phone });
+        if (!existing) {
+          await Customer.create({
+            name: row['Tên'] || 'Khách Mới',
+            phone: phone,
+            address: row['Địa chỉ'] || '',
+            email: row['Email'] || '',
+            type: row['Loại khách'] === 'Sỉ' ? 'wholesale' : 'retail',
+            ordersCount: Number(row['Tổng đơn']) || 0,
+            totalSpent: Number(row['Tổng chi tiêu']) || 0,
+          });
+          count++;
+        }
+      }
+      res.json({ message: `Nhập thành công ${count} khách hàng mới.` });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // PRODUCTS EXPORT
+  app.get('/api/products/export', async (req, res) => {
+    try {
+      const products = await Product.find({}).lean();
+      const ws = xlsx.utils.json_to_sheet(products.map(p => ({
+        ID: p._id.toString(),
+        Tên: p.name || '',
+        'Giá': p.price || 0,
+        'Mô tả': p.description || '',
+        'Tồn kho': p.stock || 0,
+        'Trạng thái': p.status || '',
+        'Nổi bật': p.isFeatured ? 'Có' : 'Không',
+        'Ngày tạo': p.createdAt
+      })));
+      const wb = xlsx.utils.book_new();
+      xlsx.utils.book_append_sheet(wb, ws, "Sản phẩm");
+      const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      res.setHeader('Content-Disposition', 'attachment; filename="products.xlsx"');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.send(buffer);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // PRODUCTS IMPORT
+  app.post('/api/products/import', upload.single('file'), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "Không tìm thấy file" });
+      const wb = xlsx.read(req.file.buffer, { type: 'buffer' });
+      const wsname = wb.SheetNames[0];
+      const data: any[] = xlsx.utils.sheet_to_json(wb.Sheets[wsname]);
+      let count = 0;
+      for (const row of data) {
+        if (!row['Tên']) continue;
+        await Product.create({
+          name: row['Tên'],
+          price: Number(row['Giá']) || 0,
+          description: row['Mô tả'] || '',
+          stock: Number(row['Tồn kho']) || 1000,
+          status: row['Trạng thái'] || 'Còn hàng',
+          isFeatured: row['Nổi bật'] === 'Có'
+        });
+        count++;
+      }
+      res.json({ message: `Nhập thành công ${count} sản phẩm.` });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
     }
   });
 

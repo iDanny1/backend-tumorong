@@ -13,6 +13,7 @@ import {
 import { Customer } from '../../types';
 import { cn } from '../../lib/utils';
 import { format } from 'date-fns';
+import { api } from '../../lib/api';
 
 interface CustomerManagementProps {
   customers: Customer[];
@@ -20,6 +21,7 @@ interface CustomerManagementProps {
   onSelectCustomer: (customer: Customer) => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
+  onRefresh?: () => void;
 }
 
 export const CustomerManagement: React.FC<CustomerManagementProps> = ({ 
@@ -27,14 +29,51 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
   initialTab = 'all',
   onSelectCustomer,
   searchQuery,
-  setSearchQuery
+  setSearchQuery,
+  onRefresh
 }) => {
   const [activeTab, setActiveTab] = useState<'all' | 'wholesale'>(initialTab);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Update activeTab if initialTab changes (from sidebar)
   React.useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
+
+  const handleExport = async () => {
+    try {
+      const response = await fetch('/api/customers/export');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'customers.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (error) {
+      alert('Lỗi khi xuất file Excel');
+    }
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const response = await fetch('/api/customers/import', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await response.json();
+      alert(data.message || 'Nhập thành công');
+      if (onRefresh) onRefresh();
+    } catch (error) {
+      alert('Lỗi khi nhập file Excel');
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const filteredCustomers = customers.filter(customer => {
     const matchesTab = activeTab === 'all' || customer.type === 'wholesale';
@@ -50,11 +89,24 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
           {/* Search is now handled by the global header */}
         </div>
         <div className="flex flex-wrap items-center gap-2 md:gap-3">
-          <button className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white border border-blue-200 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors shadow-sm">
+          <input 
+            type="file" 
+            accept=".xlsx, .xls" 
+            className="hidden" 
+            ref={fileInputRef}
+            onChange={handleImport}
+          />
+          <button 
+            onClick={handleExport}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white border border-blue-200 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors shadow-sm"
+          >
             <Download className="w-4 h-4" />
             <span className="whitespace-nowrap">Xuất file Excel</span>
           </button>
-          <button className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white border border-blue-200 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors shadow-sm">
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white border border-blue-200 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors shadow-sm"
+          >
             <Upload className="w-4 h-4" />
             <span className="whitespace-nowrap">Nhập file Excel</span>
           </button>
