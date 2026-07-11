@@ -168,7 +168,7 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
                   </td>
                   <td className="p-4">
                     <div className="flex items-center gap-2 text-sm text-slate-700">
-                      {product.price === 0 ? 'Liên hệ' : `${product.price.toLocaleString()}đ`}
+                      {typeof product.price === 'number' ? `${product.price.toLocaleString()}đ` : (product.price || 'Liên hệ')}
                       <button 
                         onClick={() => onEditProduct(product)}
                         className="p-1 hover:bg-slate-100 rounded text-emerald-600 transition-colors"

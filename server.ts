@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
-import Datastore from '@seald-io/nedb';
+import mongoose, { Schema, Document, Model } from 'mongoose';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { fileURLToPath } from 'url';
@@ -9,64 +9,246 @@ import cors from 'cors';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const app = express(); // Declare app at the top level scope
+const app = express();
 
-async function startServer() {
-  const PORT = process.env.PORT || 8080;
+// ========================
+// MONGOOSE SCHEMAS & MODELS
+// ========================
 
-  // Middleware - Use CORS first as requested
-  app.use(cors());
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Product
+interface IProduct extends Document {
+  name: string;
+  price: number;
+  description?: string;
+  images?: string[];
+  status?: string;
+  stock?: number;
+  warehouseStock?: number;
+  isFeatured?: boolean;
+  active?: boolean;
+  categoryId?: string;
+  createdAt: string;
+}
+const productSchema = new Schema<IProduct>({
+  name: String,
+  price: Number,
+  description: String,
+  images: [String],
+  status: String,
+  stock: Number,
+  warehouseStock: Number,
+  isFeatured: Boolean,
+  active: Boolean,
+  categoryId: String,
+  createdAt: { type: String, default: () => new Date().toISOString() }
+});
+const Product: Model<IProduct> = mongoose.model('Product', productSchema);
 
-  app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-    next();
-  });
+// Order
+interface IOrder extends Document {
+  orderId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customer?: object;
+  products?: any[];
+  items?: any[];
+  total?: number;
+  totalAmount?: number;
+  shippingFee?: number;
+  paymentMethod?: string;
+  shippingMethod?: string;
+  shippingUnit?: string;
+  note?: string;
+  invoice?: object;
+  status?: string;
+  paymentStatus?: string;
+  platform?: string;
+  address?: string;
+  ghnOrderCode?: string;
+  createdAt: string;
+}
+const orderSchema = new Schema<IOrder>({
+  orderId: String,
+  customerName: String,
+  customerPhone: String,
+  customer: Schema.Types.Mixed,
+  products: [Schema.Types.Mixed],
+  items: [Schema.Types.Mixed],
+  total: Number,
+  totalAmount: Number,
+  shippingFee: Number,
+  paymentMethod: String,
+  shippingMethod: String,
+  shippingUnit: String,
+  note: String,
+  invoice: Schema.Types.Mixed,
+  status: String,
+  paymentStatus: String,
+  platform: String,
+  address: String,
+  ghnOrderCode: String,
+  createdAt: { type: String, default: () => new Date().toISOString() }
+});
+const Order: Model<IOrder> = mongoose.model('Order', orderSchema);
 
-  // Cấu hình Giao Hàng Nhanh (GHN)
-  const GHN_TOKEN = process.env.GHN_TOKEN || "c0e79cba-3ef4-11f1-9107-4a16704feeb7";
-  const GHN_SHOP_ID = process.env.GHN_SHOP_ID || "5945053";
-  const ZALO_SECRET_KEY = process.env.ZALO_SECRET_KEY || "G8yOT6fT2I7xOc6mV4Jw";
+// User
+interface IUser extends Document {
+  username: string;
+  password: string;
+  name?: string;
+  role?: string;
+  email?: string;
+  phone?: string;
+  active?: boolean;
+  createdAt: string;
+}
+const userSchema = new Schema<IUser>({
+  username: { type: String, unique: true },
+  password: String,
+  name: String,
+  role: String,
+  email: String,
+  phone: String,
+  active: { type: Boolean, default: true },
+  createdAt: { type: String, default: () => new Date().toISOString() }
+});
+const User: Model<IUser> = mongoose.model('User', userSchema);
 
-  // Khởi tạo Databases
-  const productDB = new Datastore({ filename: path.join(__dirname, 'products.db'), autoload: true });
-  const orderDB = new Datastore({ filename: path.join(__dirname, 'orders.db'), autoload: true });
-  const userDB = new Datastore({ filename: path.join(__dirname, 'users.db'), autoload: true });
-  const categoryDB = new Datastore({ filename: path.join(__dirname, 'categories.db'), autoload: true });
-  const warehouseDB = new Datastore({ filename: path.join(__dirname, 'warehouses.db'), autoload: true });
-  const voucherDB = new Datastore({ filename: path.join(__dirname, 'vouchers.db'), autoload: true });
-  const articleDB = new Datastore({ filename: path.join(__dirname, 'news.db'), autoload: true });
-  const campaignDB = new Datastore({ filename: path.join(__dirname, 'campaigns.db'), autoload: true });
+// Category
+interface ICategory extends Document {
+  name: string;
+  icon?: string;
+  active?: boolean;
+  createdAt: string;
+}
+const categorySchema = new Schema<ICategory>({
+  name: String,
+  icon: String,
+  active: Boolean,
+  createdAt: { type: String, default: () => new Date().toISOString() }
+});
+const Category: Model<ICategory> = mongoose.model('Category', categorySchema);
 
-  // Seed Data (Admin, Products, Categories, Orders & News)
+// Warehouse
+interface IWarehouse extends Document {
+  name: string;
+  address?: string;
+  phone?: string;
+  active?: boolean;
+  createdAt: string;
+}
+const warehouseSchema = new Schema<IWarehouse>({
+  name: String,
+  address: String,
+  phone: String,
+  active: Boolean,
+  createdAt: { type: String, default: () => new Date().toISOString() }
+});
+const Warehouse: Model<IWarehouse> = mongoose.model('Warehouse', warehouseSchema);
+
+// Voucher
+interface IVoucher extends Document {
+  code: string;
+  discount?: number;
+  discountType?: string;
+  minOrderValue?: number;
+  maxDiscount?: number;
+  isActive?: boolean;
+  expiresAt?: string;
+  usageLimit?: number;
+  usedCount?: number;
+  createdAt: string;
+}
+const voucherSchema = new Schema<IVoucher>({
+  code: { type: String, unique: true },
+  discount: Number,
+  discountType: String,
+  minOrderValue: Number,
+  maxDiscount: Number,
+  isActive: Boolean,
+  expiresAt: String,
+  usageLimit: Number,
+  usedCount: { type: Number, default: 0 },
+  createdAt: { type: String, default: () => new Date().toISOString() }
+});
+const Voucher: Model<IVoucher> = mongoose.model('Voucher', voucherSchema);
+
+// Article (News)
+interface IArticle extends Document {
+  title: string;
+  slug?: string;
+  summary?: string;
+  content?: string;
+  thumbnail?: string;
+  category?: string;
+  author?: string;
+  status?: string;
+  views?: number;
+  tags?: string[];
+  publishedAt?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+const articleSchema = new Schema<IArticle>({
+  title: String,
+  slug: String,
+  summary: String,
+  content: String,
+  thumbnail: String,
+  category: String,
+  author: String,
+  status: String,
+  views: { type: Number, default: 0 },
+  tags: [String],
+  publishedAt: String,
+  createdAt: { type: String, default: () => new Date().toISOString() },
+  updatedAt: String
+});
+const Article: Model<IArticle> = mongoose.model('Article', articleSchema);
+
+// Campaign
+interface ICampaign extends Document {
+  name: string;
+  description?: string;
+  startDate?: string;
+  endDate?: string;
+  discount?: number;
+  active?: boolean;
+  createdAt: string;
+}
+const campaignSchema = new Schema<ICampaign>({
+  name: String,
+  description: String,
+  startDate: String,
+  endDate: String,
+  discount: Number,
+  active: Boolean,
+  createdAt: { type: String, default: () => new Date().toISOString() }
+});
+const Campaign: Model<ICampaign> = mongoose.model('Campaign', campaignSchema);
+
+// ========================
+// SEED FUNCTION
+// ========================
+async function seedData() {
   try {
     console.log('Checking database status...');
-    
-    // Seed Categories
-    const categoryCount: any = await new Promise((resolve, reject) => {
-      categoryDB.count({}, (err, count) => err ? reject(err) : resolve(count));
-    });
 
+    // Seed Categories
+    const categoryCount = await Category.countDocuments();
     if (categoryCount === 0) {
       console.log('Seeding categories...');
-      const dummyCategories = [
-        { name: 'Sâm Ngọc Linh', icon: 'https://img.icons8.com/color/144/natural-food.png', active: true, createdAt: new Date().toISOString() },
-        { name: 'Dược Liệu Quý', icon: 'https://img.icons8.com/color/144/pill.png', active: true, createdAt: new Date().toISOString() }
-      ];
-      await new Promise((resolve, reject) => {
-        categoryDB.insert(dummyCategories, (err, docs) => err ? reject(err) : resolve(docs));
-      });
+      await Category.insertMany([
+        { name: 'Sâm Ngọc Linh', icon: 'https://img.icons8.com/color/144/natural-food.png', active: true },
+        { name: 'Dược Liệu Quý', icon: 'https://img.icons8.com/color/144/pill.png', active: true }
+      ]);
     }
 
     // Seed Products
-    const productCount: any = await new Promise((resolve, reject) => {
-      productDB.count({}, (err, count) => err ? reject(err) : resolve(count));
-    });
-
+    const productCount = await Product.countDocuments();
     if (productCount === 0) {
       console.log('Seeding products...');
-      const dummyProducts = [
+      await Product.insertMany([
         {
           name: "Sâm Ngọc Linh Tu Mơ Rông (Loại 1)",
           price: 15000000,
@@ -75,71 +257,28 @@ async function startServer() {
           status: 'Còn hàng',
           stock: 50,
           isFeatured: true,
-          active: true,
-          createdAt: new Date().toISOString()
+          active: true
         }
-      ];
-      await new Promise((resolve, reject) => {
-        productDB.insert(dummyProducts, (err, docs) => err ? reject(err) : resolve(docs));
-      });
+      ]);
     }
 
-    // Seed Staff Accounts (Admin, Warehouse, Sales)
-    const staffCount: any = await new Promise((resolve, reject) => {
-      userDB.count({}, (err, count) => err ? reject(err) : resolve(count));
-    });
-    
-    if (staffCount === 0) {
+    // Seed Staff/Users
+    const userCount = await User.countDocuments();
+    if (userCount === 0) {
       console.log('Seeding default staff accounts...');
-      const defaultUsers = [
-        {
-          username: 'admin',
-          password: 'admin123',
-          name: 'Quản trị viên',
-          role: 'admin',
-          active: true,
-          createdAt: new Date().toISOString()
-        },
-        {
-          username: 'kho01',
-          password: '123',
-          name: 'Nhân viên kho 01',
-          role: 'warehouse',
-          active: true,
-          createdAt: new Date().toISOString()
-        },
-        {
-          username: 'sale01',
-          password: '123',
-          name: 'Nhân viên bán hàng 01',
-          role: 'sales',
-          active: true,
-          createdAt: new Date().toISOString()
-        }
-      ];
-      
-      for (const u of defaultUsers) {
-        await new Promise((resolve, reject) => {
-          userDB.insert(u, (err, doc) => err ? reject(err) : resolve(doc));
-        });
-      }
+      await User.insertMany([
+        { username: 'admin', password: 'admin123', name: 'Quản trị viên', role: 'admin', active: true },
+        { username: 'kho01', password: '123', name: 'Nhân viên kho 01', role: 'warehouse', active: true },
+        { username: 'sale01', password: '123', name: 'Nhân viên bán hàng 01', role: 'sales', active: true }
+      ]);
       console.log('Staff accounts seeded.');
     }
-  } catch (err) {
-    console.error('Seeding error:', err);
-  }
 
-  try {
-    const articleCount: any = await new Promise((resolve, reject) => {
-      articleDB.count({}, (err, count) => {
-        if (err) reject(err);
-        else resolve(count);
-      });
-    });
-
+    // Seed Articles
+    const articleCount = await Article.countDocuments();
     if (articleCount === 0) {
       console.log('Seeding dummy articles...');
-      const dummyArticles = [
+      await Article.insertMany([
         {
           title: "Sâm Ngọc Linh - Báu vật của đại ngàn",
           slug: "sam-ngoc-linh-bau-vat-cua-dai-ngan",
@@ -152,7 +291,6 @@ async function startServer() {
           views: 125,
           tags: ["Sâm Ngọc Linh", "Sức khỏe"],
           publishedAt: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         },
         {
@@ -167,33 +305,17 @@ async function startServer() {
           views: 89,
           tags: ["Phân biệt thật giả", "Mua sắm"],
           publishedAt: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }
-      ];
-      await new Promise((resolve, reject) => {
-        articleDB.insert(dummyArticles, (err, docs) => {
-          if (err) reject(err);
-          else resolve(docs);
-        });
-      });
-      console.log('Dummy articles seeded.');
+      ]);
+      console.log('Articles seeded.');
     }
-  } catch (err) {
-    console.error('Error during article seeding:', err);
-  }
 
-  try {
-    const orderCount: any = await new Promise((resolve, reject) => {
-      orderDB.count({}, (err, count) => {
-        if (err) reject(err);
-        else resolve(count);
-      });
-    });
-    
+    // Seed Orders
+    const orderCount = await Order.countDocuments();
     if (orderCount === 0) {
       console.log('Seeding dummy orders...');
-      const dummyOrders = [
+      await Order.insertMany([
         {
           orderId: "ORD-001",
           customerName: "Nguyễn Văn A",
@@ -204,8 +326,7 @@ async function startServer() {
           paymentMethod: "COD",
           shippingUnit: "GHN",
           status: "Chờ xác nhận",
-          paymentStatus: "Chưa thanh toán",
-          createdAt: new Date().toISOString()
+          paymentStatus: "Chưa thanh toán"
         },
         {
           orderId: "ORD-002",
@@ -220,181 +341,154 @@ async function startServer() {
           paymentStatus: "Đã thanh toán",
           createdAt: new Date(Date.now() - 86400000).toISOString()
         }
-      ];
-      await new Promise((resolve, reject) => {
-        orderDB.insert(dummyOrders, (err, docs) => {
-          if (err) reject(err);
-          else resolve(docs);
-        });
-      });
-      console.log('Dummy orders seeded.');
+      ]);
+      console.log('Orders seeded.');
     }
+
+    console.log('✅ Database seeding complete.');
   } catch (err) {
-    console.error('Error during order database initialization:', err);
+    console.error('❌ Seeding error:', err);
+  }
+}
+
+// ========================
+// SERVER STARTUP
+// ========================
+async function startServer() {
+  const PORT = process.env.PORT || 8080;
+  const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/tumorong';
+
+  // Connect to MongoDB
+  try {
+    await mongoose.connect(MONGODB_URI);
+    console.log('✅ Connected to MongoDB:', MONGODB_URI.replace(/:\/\/([^:]+):([^@]+)@/, '://***:***@'));
+  } catch (err) {
+    console.error('❌ MongoDB connection failed:', err);
+    process.exit(1);
   }
 
-  // --- API ROUTES ---
+  // Seed data
+  await seedData();
+
+  // Config
+  const GHN_TOKEN = process.env.GHN_TOKEN || "c0e79cba-3ef4-11f1-9107-4a16704feeb7";
+  const GHN_SHOP_ID = process.env.GHN_SHOP_ID || "5945053";
+  const ZALO_SECRET_KEY = process.env.ZALO_SECRET_KEY || "G8yOT6fT2I7xOc6mV4Jw";
+
+  // Middleware
+  app.use(cors());
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    next();
+  });
+
+  // ========================
+  // API ROUTES
+  // ========================
 
   // Health
-  app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+  app.get('/api/health', (req, res) => res.json({ status: 'ok', db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' }));
 
-  // Products
-  app.get('/api/products', (req, res) => {
-    productDB.find({}).sort({ isFeatured: -1, createdAt: -1 }).exec((err, docs) => {
-      if (err) return res.status(500).json({ error: err });
+  // --- PRODUCTS ---
+  app.get('/api/products', async (req, res) => {
+    try {
+      const docs = await Product.find({}).sort({ isFeatured: -1, createdAt: -1 });
       res.json(docs);
-    });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
   });
 
   app.post('/api/products', async (req, res) => {
     try {
-      const product = { ...req.body, createdAt: new Date().toISOString() };
-      const newDoc = await new Promise((resolve, reject) => {
-        productDB.insert(product, (err, doc) => {
-          if (err) reject(err);
-          else resolve(doc);
-        });
-      });
-      res.json(newDoc);
+      const product = new Product({ ...req.body, createdAt: new Date().toISOString() });
+      const saved = await product.save();
+      res.json(saved);
     } catch (err) {
-      res.status(500).json({ error: err });
+      res.status(500).json({ error: String(err) });
     }
   });
 
   app.put('/api/products/:id', async (req, res) => {
     try {
-      await new Promise((resolve, reject) => {
-        productDB.update({ _id: req.params.id }, { $set: req.body }, {}, (err) => {
-          if (err) reject(err);
-          else resolve(null);
-        });
-      });
+      await Product.findByIdAndUpdate(req.params.id, { $set: req.body });
       res.json({ success: true });
     } catch (err) {
-      res.status(500).json({ error: err });
+      res.status(500).json({ error: String(err) });
     }
   });
 
   app.delete('/api/products/:id', async (req, res) => {
     try {
-      await new Promise((resolve, reject) => {
-        productDB.remove({ _id: req.params.id }, {}, (err) => {
-          if (err) reject(err);
-          else resolve(null);
-        });
-      });
+      await Product.findByIdAndDelete(req.params.id);
       res.json({ success: true });
     } catch (err) {
-      res.status(500).json({ error: err });
+      res.status(500).json({ error: String(err) });
     }
   });
 
   app.patch('/api/products/:id/stock', async (req, res) => {
     try {
       const { warehouseStock, stock } = req.body;
-      await new Promise((resolve, reject) => {
-        productDB.update({ _id: req.params.id }, { $set: { warehouseStock, stock } }, {}, (err) => {
-          if (err) reject(err);
-          else resolve(null);
-        });
-      });
+      await Product.findByIdAndUpdate(req.params.id, { $set: { warehouseStock, stock } });
       res.json({ success: true });
     } catch (err) {
-      res.status(500).json({ error: err });
+      res.status(500).json({ error: String(err) });
     }
   });
 
-  // Download DOCX Reports/Guides
-  app.get('/api/download/huong-dan-quan-tri', (req, res) => {
-    try {
-      const filePath = path.join(__dirname, 'HUONG_DAN_QUAN_TRI.docx');
-      res.download(filePath, 'HUONG_DAN_QUAN_TRI.docx');
-    } catch (err) {
-      res.status(500).json({ error: "Không thể tải file hướng dẫn" });
-    }
-  });
-
-  app.get('/api/download/bao-cao-he-thong', (req, res) => {
-    try {
-      const filePath = path.join(__dirname, 'BAO_CAO_HE_THONG.docx');
-      res.download(filePath, 'BAO_CAO_HE_THONG.docx');
-    } catch (err) {
-      res.status(500).json({ error: "Không thể tải file báo cáo" });
-    }
-  });
-
-  // Orders
+  // --- ORDERS ---
   app.get('/api/orders', async (req, res) => {
     try {
-      const docs = await new Promise((resolve, reject) => {
-        orderDB.find({}).sort({ createdAt: -1 }).exec((err, docs) => {
-          if (err) reject(err);
-          else resolve(docs);
-        });
-      });
+      const docs = await Order.find({}).sort({ createdAt: -1 });
       res.json(docs);
     } catch (err) {
-      res.status(500).json({ error: err });
+      res.status(500).json({ error: String(err) });
     }
   });
 
   app.post('/api/orders', async (req, res) => {
     try {
-      const { 
-        customerName, 
-        customerPhone, 
-        address, 
-        items, 
-        totalAmount, 
-        note, 
-        shippingMethod, 
-        shippingFee, 
-        paymentMethod, 
+      const {
+        customerName,
+        customerPhone,
+        address,
+        items,
+        totalAmount,
+        note,
+        shippingMethod,
+        shippingFee,
+        paymentMethod,
         invoice,
-        zaloName, // Tên từ Zalo (trực tiếp)
-        zaloPhone, // SĐT từ Zalo (trực tiếp)
-        zaloTokenName, // Token tên mã hóa từ Zalo
-        zaloTokenPhone // Token SĐT mã hóa từ Zalo
+        zaloName,
+        zaloPhone,
+        zaloTokenName,
+        zaloTokenPhone
       } = req.body;
 
-      const orderData = { 
-        // Ưu tiên thông tin định danh Zalo nếu có, không thì lấy từ ô nhập liệu
+      const orderData = {
         customerName: customerName || zaloName || zaloTokenName || 'Khách Zalo',
         customerPhone: customerPhone || zaloPhone || zaloTokenPhone || 'N/A',
         address: address || 'Zalo Mini App',
-        
-        // Dữ liệu sản phẩm (mapped từ items)
-        products: items || [], 
-        
-        // Tài chính
+        products: items || [],
         totalAmount: Number(totalAmount) || 0,
         total: Number(totalAmount) || 0,
         shippingFee: shippingFee || 0,
-        
-        // Vận chuyển & Giao dịch
         note: note || '',
         shippingMethod: shippingMethod || 'nhanh',
         paymentMethod: paymentMethod || 'cod',
-        
-        // Hóa đơn doanh nghiệp
         invoice: invoice || null,
-
-        // Trạng thái hệ thống
         status: 'Chờ xác nhận',
         paymentStatus: paymentMethod === 'cod' ? 'Chưa thanh toán' : 'Đã thanh toán',
         platform: 'Zalo Mini App',
-        createdAt: new Date().toISOString() 
+        createdAt: new Date().toISOString()
       };
-      
-      const newDoc = await new Promise((resolve, reject) => {
-        orderDB.insert(orderData, (err, doc) => {
-          if (err) reject(err);
-          else resolve(doc);
-        });
-      });
-      
-      console.log('✅ Đơn hàng Zalo mới:', (newDoc as any)._id);
-      res.status(201).json({ message: "Chốt đơn thành công!", data: newDoc });
+
+      const newOrder = await Order.create(orderData);
+      console.log('✅ Đơn hàng Zalo mới:', newOrder._id);
+      res.status(201).json({ message: "Chốt đơn thành công!", data: newOrder });
     } catch (err) {
       console.error('❌ Lỗi tạo đơn hàng:', err);
       res.status(500).json({ error: "Không thể lưu đơn hàng" });
@@ -403,59 +497,304 @@ async function startServer() {
 
   app.get('/api/orders/:id', async (req, res) => {
     try {
-      const doc = await new Promise((resolve, reject) => {
-        orderDB.findOne({ _id: req.params.id }, (err, doc) => {
-          if (err) reject(err);
-          else resolve(doc);
-        });
-      });
+      const doc = await Order.findById(req.params.id);
       if (!doc) return res.status(404).json({ message: "Không tìm thấy đơn hàng" });
       res.json(doc);
     } catch (err) {
-      res.status(500).json({ error: err });
+      res.status(500).json({ error: String(err) });
     }
   });
 
   app.put('/api/orders/:id', async (req, res) => {
     try {
-      await new Promise((resolve, reject) => {
-        orderDB.update({ _id: req.params.id }, { $set: req.body }, {}, (err) => {
-          if (err) reject(err);
-          else resolve(null);
-        });
-      });
+      await Order.findByIdAndUpdate(req.params.id, { $set: req.body });
       res.json({ success: true });
     } catch (err) {
-      res.status(500).json({ error: err });
+      res.status(500).json({ error: String(err) });
     }
   });
 
   app.delete('/api/orders/:id', async (req, res) => {
     try {
-      await new Promise((resolve, reject) => {
-        orderDB.remove({ _id: req.params.id }, {}, (err) => {
-          if (err) reject(err);
-          else resolve(null);
-        });
-      });
+      await Order.findByIdAndDelete(req.params.id);
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: "Lỗi khi xóa đơn hàng" });
     }
   });
 
-  // GHN API
-  app.post('/api/ghn/create-order', async (req, res) => {
+  // --- CATEGORIES ---
+  app.get('/api/categories', async (req, res) => {
     try {
-      const response = await fetch('https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Token': GHN_TOKEN, 'ShopId': GHN_SHOP_ID },
-        body: JSON.stringify(req.body)
-      });
-      res.json(await response.json());
-    } catch (e) { res.status(500).json({ error: "GHN Error" }); }
+      const docs = await Category.find({}).sort({ createdAt: -1 });
+      res.json(docs);
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi tải danh mục' });
+    }
   });
 
+  app.post('/api/categories', async (req, res) => {
+    try {
+      const category = await Category.create({ ...req.body, createdAt: new Date().toISOString() });
+      res.status(201).json(category);
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi tạo danh mục' });
+    }
+  });
+
+  app.put('/api/categories/:id', async (req, res) => {
+    try {
+      await Category.findByIdAndUpdate(req.params.id, { $set: req.body });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi cập nhật danh mục' });
+    }
+  });
+
+  app.delete('/api/categories/:id', async (req, res) => {
+    try {
+      await Category.findByIdAndDelete(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi xóa danh mục' });
+    }
+  });
+
+  // --- NEWS / ARTICLES ---
+  app.get('/api/news', async (req, res) => {
+    try {
+      const docs = await Article.find({}).sort({ createdAt: -1 });
+      res.json(docs);
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi tải tin tức' });
+    }
+  });
+
+  app.post('/api/news', async (req, res) => {
+    try {
+      const article = await Article.create({ ...req.body, views: 0, createdAt: new Date().toISOString() });
+      res.status(201).json(article);
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi tạo bài viết' });
+    }
+  });
+
+  app.put('/api/news/:id', async (req, res) => {
+    try {
+      await Article.findByIdAndUpdate(req.params.id, { $set: req.body });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi cập nhật bài viết' });
+    }
+  });
+
+  app.delete('/api/news/:id', async (req, res) => {
+    try {
+      await Article.findByIdAndDelete(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi xóa bài viết' });
+    }
+  });
+
+  app.patch('/api/news/:slug/view', async (req, res) => {
+    try {
+      await Article.findOneAndUpdate({ slug: req.params.slug }, { $inc: { views: 1 } });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi tăng lượt xem' });
+    }
+  });
+
+  // --- STAFF / USERS ---
+  app.get('/api/staff', async (req, res) => {
+    try {
+      const users = await User.find({}).sort({ createdAt: -1 });
+      res.json(users);
+    } catch (err) {
+      console.error('CRITICAL: Error fetching staff:', err);
+      res.status(500).json({ error: 'Lỗi tải danh sách nhân viên' });
+    }
+  });
+
+  app.post('/api/staff', async (req, res) => {
+    try {
+      const { username, password, name, role, email, phone, active } = req.body;
+      if (!username || !password) {
+        return res.status(400).json({ error: 'Thiếu thông tin tài khoản hoặc mật khẩu' });
+      }
+      const existing = await User.findOne({ username });
+      if (existing) {
+        return res.status(400).json({ error: 'Tên đăng nhập đã tồn tại' });
+      }
+      const newUser = await User.create({
+        username, password, name, role, email, phone,
+        active: active !== undefined ? active : true,
+        createdAt: new Date().toISOString()
+      });
+      res.status(201).json(newUser);
+    } catch (err) {
+      console.error('Error creating staff:', err);
+      res.status(500).json({ error: 'Lỗi khi tạo nhân viên' });
+    }
+  });
+
+  app.put('/api/staff/:id', async (req, res) => {
+    try {
+      const { password, name, role, email, phone, active } = req.body;
+      const updateData: any = { name, role, email, phone, active };
+      if (password && password.trim() !== '') {
+        updateData.password = password;
+      }
+      await User.findByIdAndUpdate(req.params.id, { $set: updateData });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi khi cập nhật nhân viên' });
+    }
+  });
+
+  app.delete('/api/staff/:id', async (req, res) => {
+    try {
+      const user = await User.findById(req.params.id);
+      if (!user) return res.status(404).json({ error: 'Không tìm thấy người dùng' });
+      if (user.username === 'admin') return res.status(400).json({ error: 'Không thể xóa tài khoản admin hệ thống' });
+      await User.findByIdAndDelete(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi khi xóa nhân viên' });
+    }
+  });
+
+  // --- AUTH ---
+  app.post('/api/login', async (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Vui lòng nhập tài khoản và mật khẩu' });
+    }
+    try {
+      console.log(`[${new Date().toISOString()}] Login attempt: "${username}"`);
+      const user = await User.findOne({ username, password, active: true });
+      if (!user) {
+        console.warn(`Login failed: "${username}"`);
+        return res.status(401).json({ error: 'Sai tài khoản hoặc mật khẩu' });
+      }
+      console.log(`Login successful: "${username}"`);
+      res.json(user);
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi cơ sở dữ liệu hệ thống' });
+    }
+  });
+
+  // --- VOUCHERS ---
+  app.get('/api/vouchers', async (req, res) => {
+    try {
+      const docs = await Voucher.find({}).sort({ createdAt: -1 });
+      res.json(docs);
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi tải voucher' });
+    }
+  });
+
+  app.post('/api/vouchers', async (req, res) => {
+    try {
+      const voucher = await Voucher.create({
+        ...req.body,
+        code: req.body.code.toUpperCase(),
+        createdAt: new Date().toISOString()
+      });
+      res.status(201).json(voucher);
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi tạo voucher' });
+    }
+  });
+
+  app.put('/api/vouchers/:id', async (req, res) => {
+    try {
+      await Voucher.findByIdAndUpdate(req.params.id, { $set: req.body });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi cập nhật voucher' });
+    }
+  });
+
+  app.delete('/api/vouchers/:id', async (req, res) => {
+    try {
+      await Voucher.findByIdAndDelete(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi xóa voucher' });
+    }
+  });
+
+  app.post('/api/vouchers/validate', async (req, res) => {
+    try {
+      const { code, orderTotal } = req.body;
+      const voucher = await Voucher.findOne({ code: code.toUpperCase(), isActive: true });
+      if (!voucher) return res.status(400).json({ message: "Mã không tồn tại hoặc đã hết hạn" });
+      if (orderTotal < (voucher.minOrderValue || 0)) return res.status(400).json({ message: "Đơn hàng chưa đạt giá trị tối thiểu" });
+      res.json(voucher);
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi kiểm tra voucher' });
+    }
+  });
+
+  // --- WAREHOUSES ---
+  app.get('/api/warehouses', async (req, res) => {
+    try {
+      const docs = await Warehouse.find({}).sort({ createdAt: -1 });
+      res.json(docs);
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi tải kho hàng' });
+    }
+  });
+
+  app.post('/api/warehouses', async (req, res) => {
+    try {
+      const warehouse = await Warehouse.create({ ...req.body, createdAt: new Date().toISOString() });
+      res.status(201).json(warehouse);
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi tạo kho hàng' });
+    }
+  });
+
+  app.put('/api/warehouses/:id', async (req, res) => {
+    try {
+      await Warehouse.findByIdAndUpdate(req.params.id, { $set: req.body });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi cập nhật kho hàng' });
+    }
+  });
+
+  app.delete('/api/warehouses/:id', async (req, res) => {
+    try {
+      await Warehouse.findByIdAndDelete(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi xóa kho hàng' });
+    }
+  });
+
+  // --- CAMPAIGNS ---
+  app.get('/api/campaigns', async (req, res) => {
+    try {
+      const docs = await Campaign.find({}).sort({ createdAt: -1 });
+      res.json(docs);
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi tải chiến dịch' });
+    }
+  });
+
+  app.post('/api/campaigns', async (req, res) => {
+    try {
+      const campaign = await Campaign.create({ ...req.body, createdAt: new Date().toISOString() });
+      res.status(201).json(campaign);
+    } catch (err) {
+      res.status(500).json({ error: 'Lỗi tạo chiến dịch' });
+    }
+  });
+
+  // --- GHN SHIPPING ---
   const GHN_STATUS_MAP: Record<string, string> = {
     'ready_to_pick': 'Chờ lấy hàng',
     'picking': 'Đang lấy hàng',
@@ -476,6 +815,17 @@ async function startServer() {
     'returned': 'Đã trả hàng'
   };
 
+  app.post('/api/ghn/create-order', async (req, res) => {
+    try {
+      const response = await fetch('https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Token': GHN_TOKEN, 'ShopId': GHN_SHOP_ID },
+        body: JSON.stringify(req.body)
+      });
+      res.json(await response.json());
+    } catch (e) { res.status(500).json({ error: "GHN Error" }); }
+  });
+
   app.get('/api/ghn/status/:order_code', async (req, res) => {
     try {
       const response = await fetch('https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/detail', {
@@ -484,26 +834,18 @@ async function startServer() {
         body: JSON.stringify({ order_code: req.params.order_code })
       });
       const data = await response.json();
-      
       if (data.code === 200 && data.data) {
         const ghnStatus = data.data.status;
         const systemStatus = GHN_STATUS_MAP[ghnStatus] || ghnStatus;
         const trackingUrl = `https://donhang.ghn.vn/?order_code=${req.params.order_code}`;
-        
-        res.json({
-          success: true,
-          status: ghnStatus,
-          statusName: systemStatus,
-          trackingUrl: trackingUrl,
-          raw: data.data
-        });
+        res.json({ success: true, status: ghnStatus, statusName: systemStatus, trackingUrl, raw: data.data });
       } else {
         res.status(400).json(data);
       }
     } catch (e) { res.status(500).json({ error: "GHN Error" }); }
   });
 
-  // Zalo Phone Decryption
+  // --- ZALO ---
   app.post('/api/zalo/phone', async (req, res) => {
     try {
       const { phoneToken, accessToken } = req.body;
@@ -514,502 +856,22 @@ async function startServer() {
     } catch (e) { res.status(500).json({ error: "Zalo API Error" }); }
   });
 
-  // Categories
-  app.get('/api/categories', async (req, res) => {
+  // --- DOWNLOAD ---
+  app.get('/api/download/huong-dan-quan-tri', (req, res) => {
     try {
-      const docs = await new Promise((resolve, reject) => {
-        categoryDB.find({}).sort({ createdAt: -1 }).exec((err, docs) => {
-          if (err) reject(err);
-          else resolve(docs);
-        });
-      });
-      res.json(docs);
+      const filePath = path.join(__dirname, 'HUONG_DAN_QUAN_TRI.docx');
+      res.download(filePath, 'HUONG_DAN_QUAN_TRI.docx');
     } catch (err) {
-      res.status(500).json({ error: 'Lỗi tải danh mục' });
+      res.status(500).json({ error: "Không thể tải file hướng dẫn" });
     }
   });
 
-  app.post('/api/categories', async (req, res) => {
+  app.get('/api/download/bao-cao-he-thong', (req, res) => {
     try {
-      const category = { ...req.body, createdAt: new Date().toISOString() };
-      const newDoc = await new Promise((resolve, reject) => {
-        categoryDB.insert(category, (err, doc) => {
-          if (err) reject(err);
-          else resolve(doc);
-        });
-      });
-      res.status(201).json(newDoc);
+      const filePath = path.join(__dirname, 'BAO_CAO_HE_THONG.docx');
+      res.download(filePath, 'BAO_CAO_HE_THONG.docx');
     } catch (err) {
-      res.status(500).json({ error: 'Lỗi tạo danh mục' });
-    }
-  });
-
-  app.put('/api/categories/:id', async (req, res) => {
-    try {
-      await new Promise((resolve, reject) => {
-        categoryDB.update({ _id: req.params.id }, { $set: req.body }, {}, (err) => {
-          if (err) reject(err);
-          else resolve(null);
-        });
-      });
-      res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ error: 'Lỗi cập nhật danh mục' });
-    }
-  });
-
-  app.delete('/api/categories/:id', async (req, res) => {
-    try {
-      await new Promise((resolve, reject) => {
-        categoryDB.remove({ _id: req.params.id }, {}, (err) => {
-          if (err) reject(err);
-          else resolve(null);
-        });
-      });
-      res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ error: 'Lỗi xóa danh mục' });
-    }
-  });
-
-  // News / Articles
-  app.get('/api/news', async (req, res) => {
-    try {
-      const docs = await new Promise((resolve, reject) => {
-        articleDB.find({}).sort({ createdAt: -1 }).exec((err, docs) => {
-          if (err) reject(err);
-          else resolve(docs);
-        });
-      });
-      res.json(docs);
-    } catch (err) {
-      res.status(500).json({ error: 'Lỗi tải tin tức' });
-    }
-  });
-
-  app.post('/api/news', async (req, res) => {
-    try {
-      const article = { 
-        ...req.body, 
-        views: 0,
-        createdAt: new Date().toISOString() 
-      };
-      const newDoc = await new Promise((resolve, reject) => {
-        articleDB.insert(article, (err, doc) => {
-          if (err) reject(err);
-          else resolve(doc);
-        });
-      });
-      res.status(201).json(newDoc);
-    } catch (err) {
-      res.status(500).json({ error: 'Lỗi tạo bài viết' });
-    }
-  });
-
-  app.put('/api/news/:id', async (req, res) => {
-    try {
-      await new Promise((resolve, reject) => {
-        articleDB.update({ _id: req.params.id }, { $set: req.body }, {}, (err) => {
-          if (err) reject(err);
-          else resolve(null);
-        });
-      });
-      res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ error: 'Lỗi cập nhật bài viết' });
-    }
-  });
-
-  app.delete('/api/news/:id', async (req, res) => {
-    try {
-      await new Promise((resolve, reject) => {
-        articleDB.remove({ _id: req.params.id }, {}, (err) => {
-          if (err) reject(err);
-          else resolve(null);
-        });
-      });
-      res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ error: 'Lỗi xóa bài viết' });
-    }
-  });
-
-  app.patch('/api/news/:slug/view', async (req, res) => {
-    try {
-      await new Promise((resolve, reject) => {
-        articleDB.update({ slug: req.params.slug }, { $inc: { views: 1 } }, {}, (err) => {
-          if (err) reject(err);
-          else resolve(null);
-        });
-      });
-      res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ error: 'Lỗi tăng lượt xem' });
-    }
-  });
-
-  // Staff / Users Management
-  app.get('/api/staff', async (req, res) => {
-    try {
-      console.log('GET /api/staff - Fetching all users');
-      const users = await new Promise((resolve, reject) => {
-        userDB.find({}).sort({ createdAt: -1 }).exec((err, docs) => {
-          if (err) reject(err);
-          else resolve(docs);
-        });
-      });
-      res.json(users);
-    } catch (err) {
-      console.error('CRITICAL: Error fetching staff:', err);
-      res.status(500).json({ error: 'Lỗi tải danh sách nhân viên', details: err instanceof Error ? err.message : String(err) });
-    }
-  });
-
-  app.post('/api/staff', async (req, res) => {
-    try {
-      console.log('POST /api/staff - Creating new user:', req.body.username);
-      const { username, password, name, role, email, phone, active } = req.body;
-      
-      if (!username || !password) {
-        return res.status(400).json({ error: 'Thiếu thông tin tài khoản hoặc mật khẩu' });
-      }
-
-      // Kiểm tra trùng username
-      const existing = await new Promise((resolve, reject) => {
-        userDB.findOne({ username }, (err, doc) => {
-          if (err) reject(err);
-          else resolve(doc);
-        });
-      });
-
-      if (existing) {
-        return res.status(400).json({ error: 'Tên đăng nhập đã tồn tại' });
-      }
-
-      const newUser = {
-        username,
-        password,
-        name,
-        role,
-        email,
-        phone,
-        active: active !== undefined ? active : true,
-        createdAt: new Date().toISOString()
-      };
-
-      const result = await new Promise((resolve, reject) => {
-        userDB.insert(newUser, (err, doc) => {
-          if (err) reject(err);
-          else resolve(doc);
-        });
-      });
-
-      console.log('User created successfully:', username);
-      res.status(201).json(result);
-    } catch (err) {
-      console.error('Error creating staff:', err);
-      res.status(500).json({ error: 'Lỗi khi tạo nhân viên' });
-    }
-  });
-
-  app.put('/api/staff/:id', async (req, res) => {
-    try {
-      console.log('PUT /api/staff/:id - Updating user:', req.params.id);
-      const { password, name, role, email, phone, active } = req.body;
-      const updateData: any = { name, role, email, phone, active };
-      
-      // Chỉ cập nhật mật khẩu nếu được cung cấp
-      if (password && password.trim() !== '') {
-        updateData.password = password;
-      }
-
-      const numUpdated = await new Promise((resolve, reject) => {
-        userDB.update({ _id: req.params.id }, { $set: updateData }, {}, (err, num) => {
-          if (err) reject(err);
-          else resolve(num);
-        });
-      });
-
-      console.log(`Updated ${numUpdated} user(s)`);
-      res.json({ success: true });
-    } catch (err) {
-      console.error('Error updating staff:', err);
-      res.status(500).json({ error: 'Lỗi khi cập nhật nhân viên' });
-    }
-  });
-
-  app.delete('/api/staff/:id', async (req, res) => {
-    try {
-      console.log('DELETE /api/staff/:id - Deleting user:', req.params.id);
-      const user: any = await new Promise((resolve, reject) => {
-        userDB.findOne({ _id: req.params.id }, (err, doc) => {
-          if (err) reject(err);
-          else resolve(doc);
-        });
-      });
-
-      if (!user) {
-        return res.status(404).json({ error: 'Không tìm thấy người dùng' });
-      }
-      if (user.username === 'admin') {
-        return res.status(400).json({ error: 'Không thể xóa tài khoản admin hệ thống' });
-      }
-
-      await new Promise((resolve, reject) => {
-        userDB.remove({ _id: req.params.id }, {}, (err) => {
-          if (err) reject(err);
-          else resolve(null);
-        });
-      });
-
-      console.log('User deleted successfully');
-      res.json({ success: true });
-    } catch (err) {
-      console.error('Error deleting staff:', err);
-      res.status(500).json({ error: 'Lỗi khi xóa nhân viên' });
-    }
-  });
-
-  // Auth
-  app.post('/api/login', async (req, res) => {
-    const { username, password } = req.body;
-    
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Vui lòng nhập tài khoản và mật khẩu' });
-    }
-
-    try {
-      console.log(`[${new Date().toISOString()}] Login attempt for username: "${username}"`);
-      
-      const user = await new Promise((resolve, reject) => {
-        userDB.findOne({ username, password, active: true }, (err, doc) => {
-          if (err) reject(err);
-          else resolve(doc);
-        });
-      });
-      
-      if (!user) {
-        console.warn(`[${new Date().toISOString()}] Login failed: Invalid credentials for "${username}"`);
-        return res.status(401).json({ error: 'Sai tài khoản hoặc mật khẩu' });
-      }
-      
-      console.log(`[${new Date().toISOString()}] Login successful for: "${username}"`);
-      res.json(user);
-    } catch (err) {
-      console.error('Database error during login:', err);
-      res.status(500).json({ error: 'Lỗi cơ sở dữ liệu hệ thống' });
-    }
-  });
-
-  // Vouchers
-  app.get('/api/vouchers', async (req, res) => {
-    try {
-      const docs = await new Promise((resolve, reject) => {
-        voucherDB.find({}).sort({ createdAt: -1 }).exec((err, docs) => {
-          if (err) reject(err);
-          else resolve(docs);
-        });
-      });
-      res.json(docs);
-    } catch (err) {
-      res.status(500).json({ error: 'Lỗi tải voucher' });
-    }
-  });
-  
-  app.post('/api/vouchers', async (req, res) => {
-    try {
-      const voucher = { ...req.body, code: req.body.code.toUpperCase(), createdAt: new Date().toISOString() };
-      const newDoc = await new Promise((resolve, reject) => {
-        voucherDB.insert(voucher, (err, doc) => {
-          if (err) reject(err);
-          else resolve(doc);
-        });
-      });
-      res.status(201).json(newDoc);
-    } catch (err) {
-      res.status(500).json({ error: 'Lỗi tạo voucher' });
-    }
-  });
-
-  app.put('/api/vouchers/:id', async (req, res) => {
-    try {
-      await new Promise((resolve, reject) => {
-        voucherDB.update({ _id: req.params.id }, { $set: req.body }, {}, (err) => {
-          if (err) reject(err);
-          else resolve(null);
-        });
-      });
-      res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ error: 'Lỗi cập nhật voucher' });
-    }
-  });
-
-  app.delete('/api/vouchers/:id', async (req, res) => {
-    try {
-      await new Promise((resolve, reject) => {
-        voucherDB.remove({ _id: req.params.id }, {}, (err) => {
-          if (err) reject(err);
-          else resolve(null);
-        });
-      });
-      res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ error: 'Lỗi xóa voucher' });
-    }
-  });
-
-  app.post('/api/vouchers/validate', async (req, res) => {
-    try {
-      const { code, orderTotal } = req.body;
-      const voucher: any = await new Promise((resolve, reject) => {
-        voucherDB.findOne({ code: code.toUpperCase(), isActive: true }, (err, doc) => {
-          if (err) reject(err);
-          else resolve(doc);
-        });
-      });
-
-      if (!voucher) return res.status(400).json({ message: "Mã không tồn tại hoặc đã hết hạn" });
-      if (orderTotal < voucher.minOrderValue) return res.status(400).json({ message: "Đơn hàng chưa đạt giá trị tối thiểu" });
-      res.json(voucher);
-    } catch (err) {
-      res.status(500).json({ error: 'Lỗi kiểm tra voucher' });
-    }
-  });
-
-  // Warehouses
-  app.get('/api/warehouses', async (req, res) => {
-    try {
-      const docs = await new Promise((resolve, reject) => {
-        warehouseDB.find({}).sort({ createdAt: -1 }).exec((err, docs) => {
-          if (err) reject(err);
-          else resolve(docs);
-        });
-      });
-      res.json(docs);
-    } catch (err) {
-      res.status(500).json({ error: 'Lỗi tải kho hàng' });
-    }
-  });
-
-  app.post('/api/warehouses', async (req, res) => {
-    try {
-      const warehouse = { ...req.body, createdAt: new Date().toISOString() };
-      const newDoc = await new Promise((resolve, reject) => {
-        warehouseDB.insert(warehouse, (err, doc) => {
-          if (err) reject(err);
-          else resolve(doc);
-        });
-      });
-      res.status(201).json(newDoc);
-    } catch (err) {
-      res.status(500).json({ error: 'Lỗi tạo kho hàng' });
-    }
-  });
-
-  app.put('/api/warehouses/:id', async (req, res) => {
-    try {
-      await new Promise((resolve, reject) => {
-        warehouseDB.update({ _id: req.params.id }, { $set: req.body }, {}, (err) => {
-          if (err) reject(err);
-          else resolve(null);
-        });
-      });
-      res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ error: 'Lỗi cập nhật kho hàng' });
-    }
-  });
-
-  app.delete('/api/warehouses/:id', async (req, res) => {
-    try {
-      await new Promise((resolve, reject) => {
-        warehouseDB.remove({ _id: req.params.id }, {}, (err) => {
-          if (err) reject(err);
-          else resolve(null);
-        });
-      });
-      res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ error: 'Lỗi xóa kho hàng' });
-    }
-  });
-
-  // Campaigns
-  app.get('/api/campaigns', async (req, res) => {
-    try {
-      const docs = await new Promise((resolve, reject) => {
-        campaignDB.find({}).sort({ createdAt: -1 }).exec((err, docs) => {
-          if (err) reject(err);
-          else resolve(docs);
-        });
-      });
-      res.json(docs);
-    } catch (err) {
-      res.status(500).json({ error: 'Lỗi tải chiến dịch' });
-    }
-  });
-
-  app.post('/api/campaigns', async (req, res) => {
-    try {
-      const campaign = { ...req.body, createdAt: new Date().toISOString() };
-      const newDoc = await new Promise((resolve, reject) => {
-        campaignDB.insert(campaign, (err, doc) => {
-          if (err) reject(err);
-          else resolve(doc);
-        });
-      });
-      res.status(201).json(newDoc);
-    } catch (err) {
-      res.status(500).json({ error: 'Lỗi tạo chiến dịch' });
-    }
-  });
-
-  // --- GHN SHIPPING APIS ---
-  app.post('/api/ghn/create-order', async (req, res) => {
-    try {
-      const ghnToken = process.env.GHN_TOKEN || 'c0e79cba-3ef4-11f1-9107-4a16704feeb7';
-      const shopId = process.env.GHN_SHOP_ID || '5945053';
-
-      const response = await fetch('https://dev-online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Token': ghnToken,
-          'ShopId': shopId
-        },
-        body: JSON.stringify(req.body)
-      });
-
-      const data = await response.json();
-      res.json(data);
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  });
-
-  app.get('/api/ghn/status/:order_code', async (req, res) => {
-    try {
-      const ghnToken = process.env.GHN_TOKEN || 'c0e79cba-3ef4-11f1-9107-4a16704feeb7';
-      const { order_code } = req.params;
-
-      const response = await fetch('https://dev-online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/detail', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Token': ghnToken
-        },
-        body: JSON.stringify({ order_code })
-      });
-
-      const data = await response.json();
-      if (data.code === 200) {
-        res.json({ success: true, status: data.data.status, statusName: data.data.status });
-      } else {
-        res.status(400).json({ success: false, message: data.message });
-      }
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
+      res.status(500).json({ error: "Không thể tải file báo cáo" });
     }
   });
 
@@ -1041,4 +903,3 @@ async function startServer() {
 startServer().catch(err => {
   console.error("Failed to start server:", err);
 });
-   
