@@ -70,6 +70,8 @@ interface IOrder extends Document {
   platform?: string;
   address?: string;
   ghnOrderCode?: string;
+  voucherCode?: string;
+  discountAmount?: number;
   createdAt: string;
 }
 const orderSchema = new Schema<IOrder>({
@@ -92,6 +94,8 @@ const orderSchema = new Schema<IOrder>({
   platform: String,
   address: String,
   ghnOrderCode: String,
+  voucherCode: String,
+  discountAmount: Number,
   createdAt: { type: String, default: () => new Date().toISOString() }
 });
 const Order: Model<IOrder> = mongoose.model('Order', orderSchema);
@@ -501,7 +505,9 @@ async function startServer() {
         zaloName,
         zaloPhone,
         zaloTokenName,
-        zaloTokenPhone
+        zaloTokenPhone,
+        voucherCode,
+        discountAmount
       } = req.body;
 
       const orderData = {
@@ -519,11 +525,21 @@ async function startServer() {
         status: 'Chờ xác nhận',
         paymentStatus: paymentMethod === 'cod' ? 'Chưa thanh toán' : 'Đã thanh toán',
         platform: 'Zalo Mini App',
+        voucherCode: voucherCode || '',
+        discountAmount: Number(discountAmount) || 0,
         createdAt: new Date().toISOString()
       };
 
       const newOrder = await Order.create(orderData);
       console.log('✅ Đơn hàng Zalo mới:', newOrder._id);
+
+      // --- CẬP NHẬT LƯỢT DÙNG VOUCHER ---
+      if (voucherCode) {
+        await Voucher.findOneAndUpdate(
+          { code: voucherCode.toUpperCase() },
+          { $inc: { usedCount: 1 } }
+        ).catch(err => console.error("Lỗi update voucher:", err));
+      }
 
       // --- TỰ ĐỘNG LƯU KHÁCH HÀNG ---
       if (orderData.customerPhone && orderData.customerPhone !== 'N/A') {
