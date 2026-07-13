@@ -1,6 +1,6 @@
-const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:8080';
+const API_URL = (import.meta as any).env.VITE_API_URL || '';
 
-console.log('API Client initialized with Base URL:', API_URL);
+console.log('API Client initialized with Base URL:', API_URL || '(relative)');
 
 export const api = {
   get: async (endpoint: string) => {
