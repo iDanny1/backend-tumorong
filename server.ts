@@ -31,7 +31,8 @@ interface IProduct extends Document {
   warehouseStock?: number;
   isFeatured?: boolean;
   active?: boolean;
-  categoryId?: string;
+  categoryIds?: string[];
+  categoryNames?: string[];
   createdAt: string;
 }
 const productSchema = new Schema<IProduct>({
@@ -44,7 +45,8 @@ const productSchema = new Schema<IProduct>({
   warehouseStock: Number,
   isFeatured: Boolean,
   active: Boolean,
-  categoryId: String,
+  categoryIds: [String],
+  categoryNames: [String],
   createdAt: { type: String, default: () => new Date().toISOString() }
 });
 const Product: Model<IProduct> = mongoose.model('Product', productSchema);
@@ -158,12 +160,16 @@ const Customer: Model<ICustomer> = mongoose.model('Customer', customerSchema);
 interface ICategory extends Document {
   name: string;
   icon?: string;
+  images?: string[];
+  description?: string;
   active?: boolean;
   createdAt: string;
 }
 const categorySchema = new Schema<ICategory>({
   name: String,
   icon: String,
+  images: [String],
+  description: String,
   active: Boolean,
   createdAt: { type: String, default: () => new Date().toISOString() }
 });
@@ -434,7 +440,14 @@ async function startServer() {
   // --- PRODUCTS ---
   app.get('/api/products', async (req, res) => {
     try {
-      const docs = await Product.find({}).sort({ isFeatured: -1, createdAt: -1 });
+      const filter: any = {};
+      if (req.query.categoryId) {
+        filter.categoryIds = req.query.categoryId;
+      }
+      if (req.query.active) {
+        filter.active = req.query.active === 'true';
+      }
+      const docs = await Product.find(filter).sort({ isFeatured: -1, createdAt: -1 });
       res.json(docs);
     } catch (err) {
       res.status(500).json({ error: String(err) });
@@ -602,7 +615,11 @@ async function startServer() {
   // --- CATEGORIES ---
   app.get('/api/categories', async (req, res) => {
     try {
-      const docs = await Category.find({}).sort({ createdAt: -1 });
+      const filter: any = {};
+      if (req.query.active) {
+        filter.active = req.query.active === 'true';
+      }
+      const docs = await Category.find(filter).sort({ createdAt: -1 });
       res.json(docs);
     } catch (err) {
       res.status(500).json({ error: 'Lỗi tải danh mục' });

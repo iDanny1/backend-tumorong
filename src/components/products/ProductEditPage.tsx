@@ -1,5 +1,7 @@
 import React, { useRef } from 'react';
 import { X, Upload, Image as ImageIcon, Bold, Italic, Underline, List, AlignLeft, AlignCenter, AlignRight, Link, Type, ChevronLeft, Star } from 'lucide-react';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 import { Product, Category } from '../../types';
 import { NumberInput } from '../ui/NumberInput';
 
@@ -122,33 +124,13 @@ export const ProductEditPage: React.FC<ProductEditPageProps> = ({
               </div>
               <div>
                 <label className="block text-11 font-bold text-slate-500 uppercase mb-1">* Mô tả sản phẩm</label>
-                <div className="border border-slate-200 rounded overflow-hidden">
-                  <div className="bg-slate-50 border-b border-slate-200 p-2 flex items-center gap-4">
-                    <div className="flex items-center gap-1 border-r border-slate-200 pr-4">
-                      <select className="bg-transparent text-xs font-medium outline-none"><option>Normal</option></select>
-                    </div>
-                    <div className="flex items-center gap-2 border-r border-slate-200 pr-4">
-                      <Bold className="w-3.5 h-3.5 text-slate-600 cursor-pointer" />
-                      <Italic className="w-3.5 h-3.5 text-slate-600 cursor-pointer" />
-                      <Underline className="w-3.5 h-3.5 text-slate-600 cursor-pointer" />
-                    </div>
-                    <div className="flex items-center gap-2 border-r border-slate-200 pr-4">
-                      <List className="w-3.5 h-3.5 text-slate-600 cursor-pointer" />
-                      <AlignLeft className="w-3.5 h-3.5 text-slate-600 cursor-pointer" />
-                      <AlignCenter className="w-3.5 h-3.5 text-slate-600 cursor-pointer" />
-                      <AlignRight className="w-3.5 h-3.5 text-slate-600 cursor-pointer" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Link className="w-3.5 h-3.5 text-slate-600 cursor-pointer" />
-                      <ImageIcon className="w-3.5 h-3.5 text-slate-600 cursor-pointer" />
-                      <Type className="w-3.5 h-3.5 text-slate-600 cursor-pointer" />
-                    </div>
-                  </div>
-                  <textarea 
-                    className="w-full p-4 text-sm outline-none min-h-[200px] leading-relaxed"
-                    value={formData.description}
-                    onChange={e => setFormData({...formData, description: e.target.value})}
+                <div className="bg-white rounded overflow-hidden">
+                  <ReactQuill 
+                    theme="snow"
+                    value={formData.description || ''}
+                    onChange={(val) => setFormData({...formData, description: val})}
                     placeholder="Nhập mô tả sản phẩm..."
+                    style={{ minHeight: '200px' }}
                   />
                 </div>
               </div>
@@ -275,6 +257,8 @@ export const ProductEditPage: React.FC<ProductEditPageProps> = ({
                   type="text" 
                   placeholder="Nhập số lượt bán hiển thị"
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all font-bold"
+                  value={formData.views || 0}
+                  onChange={e => setFormData({...formData, views: parseInt(e.target.value) || 0})}
                 />
               </div>
             </div>

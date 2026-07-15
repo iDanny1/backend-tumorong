@@ -1,5 +1,7 @@
 import React, { useRef } from 'react';
 import { X, Upload, Image as ImageIcon, Star } from 'lucide-react';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 import { Category } from '../../types';
 import { NumberInput } from '../ui/NumberInput';
 
@@ -164,12 +166,15 @@ export const ProductModal: React.FC<ProductModalProps> = ({
           
           <div>
             <label className="block text-sm font-medium text-slate-600 mb-1">Mô tả sản phẩm</label>
-            <textarea 
-              className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500/20 outline-none text-sm min-h-[100px]"
-              value={newProduct.description}
-              onChange={e => setNewProduct({...newProduct, description: e.target.value})}
-              placeholder="Nhập mô tả sản phẩm..."
-            />
+            <div className="bg-white rounded-lg overflow-hidden border border-slate-200">
+              <ReactQuill 
+                theme="snow"
+                value={newProduct.description || ''}
+                onChange={val => setNewProduct({...newProduct, description: val})}
+                placeholder="Nhập mô tả sản phẩm..."
+                style={{ minHeight: '100px' }}
+              />
+            </div>
           </div>
           
           <div>
