@@ -949,6 +949,42 @@ async function startServer() {
     } catch (e) { res.status(500).json({ error: "Zalo API Error" }); }
   });
 
+  // Webhook nhận sự kiện từ Zalo Mini App (Xóa dữ liệu, Rút quyền...)
+  app.post('/api/zalo/webhook', async (req, res) => {
+    try {
+      console.log('🔔 Zalo Webhook received:', req.body);
+      
+      // Payload mẫu của Zalo: { app_id, event_name, sender: { id: "..." }, ... }
+      const { event_name, sender, phone } = req.body;
+      
+      if (event_name === 'user_delete_data' || event_name === 'user_revoke_app') {
+        const zaloUserId = sender?.id;
+        console.log(`Đang xử lý yêu cầu xóa dữ liệu cho sự kiện: ${event_name}, ZaloID: ${zaloUserId}`);
+        
+        // Nếu hệ thống sau này lưu zaloId vào Customer/Order thì sẽ tìm theo zaloId để xóa
+        // Tạm thời nếu payload có số điện thoại (tùy config Zalo) thì xóa theo số điện thoại
+        if (phone) {
+          await Customer.findOneAndDelete({ phone });
+          // Xóa hoặc ẩn thông tin trên đơn hàng
+          await Order.updateMany(
+            { customerPhone: phone },
+            { $set: { customerName: 'Đã xóa dữ liệu', customerPhone: 'N/A', address: 'N/A', customer: null } }
+          );
+          console.log(`Đã xóa dữ liệu khách hàng có SĐT: ${phone}`);
+        } else if (zaloUserId) {
+          // TODO: Mở rộng logic tìm user theo zaloUserId nếu DB có field này.
+          console.log(`Đã nhận yêu cầu xóa data của Zalo ID: ${zaloUserId}.`);
+        }
+      }
+      
+      // LUÔN TRẢ VỀ 200 OK ĐỂ ZALO BIẾT ĐÃ NHẬN THÀNH CÔNG
+      res.status(200).json({ error: 0, message: "Success" });
+    } catch (e) {
+      console.error("❌ Lỗi xử lý Zalo Webhook:", e);
+      res.status(500).json({ error: "Lỗi server" });
+    }
+  });
+
   // --- DOWNLOAD ---
   app.get('/api/download/huong-dan-quan-tri', (req, res) => {
     try {
