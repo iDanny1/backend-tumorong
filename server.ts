@@ -1016,7 +1016,7 @@ async function startServer() {
   });
 
   // Webhook nhận sự kiện từ Zalo Mini App (Xóa dữ liệu, Rút quyền...)
-  app.post('/api/zalo/webhook', async (req, res) => {
+  app.post('/api/zalo-webhook', async (req, res) => {
     try {
       console.log('🔔 Zalo Webhook received:', req.body);
       
