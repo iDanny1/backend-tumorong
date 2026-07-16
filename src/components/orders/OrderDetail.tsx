@@ -187,13 +187,19 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack, onUpdat
                   <span className="text-slate-500 font-medium">Thanh toán ({order.paymentMethod || 'COD'})</span>
                   <span className="font-medium text-slate-800">{(order.totalAmount || order.total)?.toLocaleString()}đ</span>
                 </div>
+                {order.voucherCode && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500 font-medium">Voucher ({order.voucherCode})</span>
+                    <span className="font-medium text-emerald-600">-{(order.discountAmount || 0)?.toLocaleString()}đ</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500 font-medium">Tổng tiền</span>
                   <span className="font-bold text-slate-800">{(order.totalAmount || order.total)?.toLocaleString()}đ</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-900 font-black">Tổng</span>
-                  <span className="font-black text-slate-900">{(order.totalAmount || order.total)?.toLocaleString()}đ</span>
+                  <span className="text-slate-900 font-black">Tổng thanh toán</span>
+                  <span className="font-black text-red-600 text-lg">{(order.totalAmount || order.total)?.toLocaleString()}đ</span>
                 </div>
               </div>
             </div>
@@ -249,6 +255,41 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack, onUpdat
               </div>
             </div>
           </div>
+
+          {/* VAT Info Card */}
+          {order.invoice && (
+            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-8 space-y-8 mt-6">
+              <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-2">
+                <Package className="w-5 h-5 text-emerald-600" />
+                Thông tin xuất VAT (Hóa đơn)
+              </h2>
+              
+              <div className="space-y-4">
+                <div className="grid grid-cols-1">
+                  <label className="block text-[13px] font-black text-slate-800 mb-1">Tên tổ chức / Công ty</label>
+                  <p className="text-sm text-slate-600">{order.invoice.company || 'N/A'}</p>
+                </div>
+                <div className="grid grid-cols-1">
+                  <label className="block text-[13px] font-black text-slate-800 mb-1">Mã số thuế</label>
+                  <p className="text-sm text-slate-600">{order.invoice.taxCode || 'N/A'}</p>
+                </div>
+                <div className="grid grid-cols-1">
+                  <label className="block text-[13px] font-black text-slate-800 mb-1">Địa chỉ</label>
+                  <p className="text-sm text-slate-600">{order.invoice.address || 'N/A'}</p>
+                </div>
+                <div className="grid grid-cols-1">
+                  <label className="block text-[13px] font-black text-slate-800 mb-1">Email nhận hóa đơn</label>
+                  <p className="text-sm text-slate-600">{order.invoice.email || 'N/A'}</p>
+                </div>
+                {order.invoice.budgetCode && (
+                  <div className="grid grid-cols-1">
+                    <label className="block text-[13px] font-black text-slate-800 mb-1">Mã đơn vị ngân sách</label>
+                    <p className="text-sm text-slate-600">{order.invoice.budgetCode}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right Column Sidebar */}

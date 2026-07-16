@@ -42,7 +42,8 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
 
   const handleExport = async () => {
     try {
-      const response = await fetch('/api/customers/export');
+      const baseUrl = (import.meta as any).env.VITE_API_URL || '';
+      const response = await fetch(`${baseUrl}/api/customers/export`);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -62,7 +63,8 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const response = await fetch('/api/customers/import', {
+      const baseUrl = (import.meta as any).env.VITE_API_URL || '';
+      const response = await fetch(`${baseUrl}/api/customers/import`, {
         method: 'POST',
         body: formData
       });

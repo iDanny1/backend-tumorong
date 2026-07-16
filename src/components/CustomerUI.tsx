@@ -65,10 +65,19 @@ export const CustomerUI: React.FC<CustomerUIProps> = ({
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const newOrder: Partial<Order> = {
+    const newOrder: Partial<Order> & { address?: string; note?: string; items?: any[]; totalAmount?: number } = {
       orderId: `ORD-${Math.floor(Math.random() * 1000000)}`,
       customerName: customerInfo.name,
       customerPhone: customerInfo.phone,
+      address: customerInfo.address,
+      note: customerInfo.note,
+      items: cart.map(item => ({ 
+        id: item.product._id, 
+        name: item.product.name, 
+        price: item.product.price, 
+        quantity: item.quantity 
+      })),
+      totalAmount: cartTotal,
       total: cartTotal,
       paymentMethod: 'Thanh toán khi nhận hàng (COD)',
       shippingUnit: 'Giao hàng nhanh',

@@ -606,13 +606,21 @@ async function startServer() {
           existingCustomer.ordersCount = (existingCustomer.ordersCount || 0) + 1;
           existingCustomer.totalSpent = (existingCustomer.totalSpent || 0) + orderData.totalAmount;
           existingCustomer.lastAccess = new Date().toISOString();
+          
+          if (orderData.address && orderData.address !== 'Zalo Mini App') {
+            existingCustomer.address = orderData.address;
+          }
+          if (orderData.customerName && orderData.customerName !== 'Khách Zalo' && orderData.customerName !== existingCustomer.name) {
+            existingCustomer.name = orderData.customerName;
+          }
+
           await existingCustomer.save();
         } else {
           // Tạo mới (không overwrite sau này)
           await Customer.create({
             name: orderData.customerName,
             phone: orderData.customerPhone,
-            address: orderData.address,
+            address: orderData.address !== 'Zalo Mini App' ? orderData.address : '',
             ordersCount: 1,
             totalSpent: orderData.totalAmount,
             type: 'retail',
