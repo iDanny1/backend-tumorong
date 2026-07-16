@@ -312,11 +312,20 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack, onUpdat
 
             <div className="pt-6 flex flex-wrap justify-end gap-3 border-t border-slate-100">
               <button 
-                onClick={() => alert('Đã gửi thông báo cho khách hàng qua Zalo ZNS')}
+                onClick={() => {
+                  const phone = order.customerPhone || order.customer?.phone;
+                  if (phone) {
+                    // Xóa các ký tự không phải số khỏi SĐT
+                    const cleanPhone = phone.replace(/\D/g, '');
+                    window.open(`https://zalo.me/${cleanPhone}`, '_blank');
+                  } else {
+                    alert('Không có số điện thoại khách hàng để mở Zalo!');
+                  }
+                }}
                 className="bg-white hover:bg-blue-50 text-blue-600 border border-blue-200 font-bold py-2.5 px-6 rounded text-[13px] transition-all active:scale-95 flex items-center gap-2"
               >
                 <Bell className="w-4 h-4" />
-                Gửi thông báo cho khách
+                Chat Zalo với khách
               </button>
               <button 
                 onClick={handlePushToGHN}
