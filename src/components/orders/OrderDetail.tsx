@@ -53,7 +53,7 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack, onUpdat
         required_note: "CHOXEMHANGKHONGTHU",
         to_name: order.customerName || order.customer?.name || "Khách hàng",
         to_phone: order.customerPhone || order.customer?.phone || "",
-        to_address: order.customer?.address || "",
+        to_address: order.address || order.customer?.address || "",
         to_ward_code: "20109",
         to_district_id: 1442,
         weight: 500,
@@ -223,7 +223,7 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack, onUpdat
               <div className="grid grid-cols-1">
                 <label className="block text-[13px] font-black text-slate-800 mb-2 border-t border-slate-100 pt-8 mt-4">Địa chỉ giao hàng</label>
                 <p className="text-sm text-slate-600 leading-relaxed max-w-lg">
-                  {order.customerName || order.customer?.name}, {order.customerPhone || order.customer?.phone}, {order.customer?.address || 'Tại cửa hàng'}
+                  {order.customerName || order.customer?.name}, {order.customerPhone || order.customer?.phone}, {order.address || order.customer?.address || 'Tại cửa hàng'}
                 </p>
               </div>
 
@@ -257,13 +257,13 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack, onUpdat
           </div>
 
           {/* VAT Info Card */}
-          {order.invoice && (
-            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-8 space-y-8 mt-6">
-              <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-2">
-                <Package className="w-5 h-5 text-emerald-600" />
-                Thông tin xuất VAT (Hóa đơn)
-              </h2>
-              
+          <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-8 space-y-6 mt-6">
+            <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-2">
+              <Package className="w-5 h-5 text-emerald-600" />
+              Thông tin xuất VAT (Hóa đơn)
+            </h2>
+            
+            {order.invoice ? (
               <div className="space-y-4">
                 <div className="grid grid-cols-1">
                   <label className="block text-[13px] font-black text-slate-800 mb-1">Tên tổ chức / Công ty</label>
@@ -288,8 +288,12 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack, onUpdat
                   </div>
                 )}
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 text-center">
+                <p className="text-sm text-slate-500 italic">Khách hàng không yêu cầu xuất hóa đơn VAT</p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Right Column Sidebar */}
