@@ -7,6 +7,9 @@ import { fileURLToPath } from 'url';
 import cors from 'cors';
 import multer from 'multer';
 import * as xlsx from 'xlsx';
+import bcrypt from 'bcryptjs';
+
+const SALT_ROUNDS = 10;
 
 // Configure multer for memory storage (for Excel uploads)
 const upload = multer({ storage: multer.memoryStorage() });
@@ -312,10 +315,13 @@ async function seedData() {
     const userCount = await User.countDocuments();
     if (userCount === 0) {
       console.log('Seeding default staff accounts...');
+      const webmasterHash = await bcrypt.hash('tumorong88', SALT_ROUNDS);
+      const khoHash = await bcrypt.hash('123', SALT_ROUNDS);
+      const saleHash = await bcrypt.hash('123', SALT_ROUNDS);
       await User.insertMany([
-        { username: 'admin', password: 'admin123', name: 'Quản trị viên', role: 'admin', active: true },
-        { username: 'kho01', password: '123', name: 'Nhân viên kho 01', role: 'warehouse', active: true },
-        { username: 'sale01', password: '123', name: 'Nhân viên bán hàng 01', role: 'sales', active: true }
+        { username: 'webmaster', password: webmasterHash, name: 'Webmaster', role: 'admin', active: true },
+        { username: 'kho01', password: khoHash, name: 'Nhân viên kho 01', role: 'warehouse', active: true },
+        { username: 'sale01', password: saleHash, name: 'Nhân viên bán hàng 01', role: 'sales', active: true }
       ]);
       console.log('Staff accounts seeded.');
     }
@@ -398,6 +404,41 @@ async function seedData() {
 }
 
 // ========================
+// MIGRATE PLAIN-TEXT PASSWORDS → bcrypt hashes
+// ========================
+async function migratePasswords() {
+  try {
+    const users = await User.find({});
+    let migrated = 0;
+    for (const u of users) {
+      // Nếu password chưa phải bcrypt hash (không bắt đầu bằng $2)
+      if (!u.password.startsWith('$2')) {
+        u.password = await bcrypt.hash(u.password, SALT_ROUNDS);
+        await u.save();
+        migrated++;
+      }
+    }
+    // Đổi username 'admin' → 'webmaster' nếu vẫn còn tồn tại
+    const oldAdmin = await User.findOne({ username: 'admin' });
+    if (oldAdmin) {
+      const webmasterExists = await User.findOne({ username: 'webmaster' });
+      if (!webmasterExists) {
+        oldAdmin.username = 'webmaster';
+        oldAdmin.password = await bcrypt.hash('tumorong88', SALT_ROUNDS);
+        oldAdmin.name = 'Webmaster';
+        await oldAdmin.save();
+        console.log('✅ Đã đổi tài khoản admin → webmaster');
+      }
+    }
+    if (migrated > 0) {
+      console.log(`✅ Đã mã hóa ${migrated} mật khẩu cũ.`);
+    }
+  } catch (err) {
+    console.error('❌ Migration error:', err);
+  }
+}
+
+// ========================
 // SERVER STARTUP
 // ========================
 async function startServer() {
@@ -415,6 +456,9 @@ async function startServer() {
 
   // Seed data
   await seedData();
+
+  // Migrate passwords & rename legacy admin account
+  await migratePasswords();
 
   // Config
   const GHN_TOKEN = process.env.GHN_TOKEN || "c0e79cba-3ef4-11f1-9107-4a16704feeb7";
@@ -720,8 +764,16 @@ async function startServer() {
       if (existing) {
         return res.status(400).json({ error: 'Tên đăng nhập đã tồn tại' });
       }
+      // Chỉ cho phép 1 tài khoản admin duy nhất
+      if (role === 'admin') {
+        const adminExists = await User.findOne({ role: 'admin' });
+        if (adminExists) {
+          return res.status(400).json({ error: 'Đã có tài khoản Admin trong hệ thống. Chỉ được phép 1 tài khoản Admin duy nhất.' });
+        }
+      }
+      const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
       const newUser = await User.create({
-        username, password, name, role, email, phone,
+        username, password: hashedPassword, name, role, email, phone,
         active: active !== undefined ? active : true,
         createdAt: new Date().toISOString()
       });
@@ -736,8 +788,15 @@ async function startServer() {
     try {
       const { password, name, role, email, phone, active } = req.body;
       const updateData: any = { name, role, email, phone, active };
+      // Nếu đang đổi role sang admin, kiểm tra không có admin nào khác
+      if (role === 'admin') {
+        const existingAdmin = await User.findOne({ role: 'admin', _id: { $ne: req.params.id } });
+        if (existingAdmin) {
+          return res.status(400).json({ error: 'Đã có tài khoản Admin trong hệ thống. Chỉ được phép 1 tài khoản Admin duy nhất.' });
+        }
+      }
       if (password && password.trim() !== '') {
-        updateData.password = password;
+        updateData.password = await bcrypt.hash(password, SALT_ROUNDS);
       }
       await User.findByIdAndUpdate(req.params.id, { $set: updateData });
       res.json({ success: true });
@@ -750,7 +809,7 @@ async function startServer() {
     try {
       const user = await User.findById(req.params.id);
       if (!user) return res.status(404).json({ error: 'Không tìm thấy người dùng' });
-      if (user.username === 'admin') return res.status(400).json({ error: 'Không thể xóa tài khoản admin hệ thống' });
+      if (user.role === 'admin') return res.status(400).json({ error: 'Không thể xóa tài khoản Admin hệ thống' });
       await User.findByIdAndDelete(req.params.id);
       res.json({ success: true });
     } catch (err) {
@@ -766,13 +825,20 @@ async function startServer() {
     }
     try {
       console.log(`[${new Date().toISOString()}] Login attempt: "${username}"`);
-      const user = await User.findOne({ username, password, active: true });
+      const user = await User.findOne({ username, active: true });
       if (!user) {
-        console.warn(`Login failed: "${username}"`);
+        console.warn(`Login failed (not found): "${username}"`);
         return res.status(401).json({ error: 'Sai tài khoản hoặc mật khẩu' });
       }
-      console.log(`Login successful: "${username}"`);
-      res.json(user);
+      const passwordMatch = await bcrypt.compare(password, user.password);
+      if (!passwordMatch) {
+        console.warn(`Login failed (wrong password): "${username}"`);
+        return res.status(401).json({ error: 'Sai tài khoản hoặc mật khẩu' });
+      }
+      console.log(`Login successful: "${username}" (role: ${user.role})`);
+      // Trả về thông tin user nhưng không trả password
+      const { password: _pwd, ...userSafe } = user.toObject();
+      res.json(userSafe);
     } catch (err) {
       res.status(500).json({ error: 'Lỗi cơ sở dữ liệu hệ thống' });
     }

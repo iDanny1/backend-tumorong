@@ -61,6 +61,22 @@ export const StaffManagement: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      // Kiểm tra nếu đang tạo admin mới nhưng đã có admin rồi
+      if (formData.role === 'admin' && !editingStaff) {
+        const existingAdmin = staff.find(s => s.role === 'admin');
+        if (existingAdmin) {
+          alert('Hệ thống chỉ cho phép 1 tài khoản Admin duy nhất. Hiện đã có tài khoản: ' + existingAdmin.username);
+          return;
+        }
+      }
+      // Kiểm tra nếu đang đổi role sang admin nhưng đã có admin khác rồi
+      if (formData.role === 'admin' && editingStaff) {
+        const existingAdmin = staff.find(s => s.role === 'admin' && s._id !== editingStaff._id);
+        if (existingAdmin) {
+          alert('Hệ thống chỉ cho phép 1 tài khoản Admin duy nhất. Hiện đã có tài khoản: ' + existingAdmin.username);
+          return;
+        }
+      }
       if (editingStaff) {
         await api.put(`/api/staff/${editingStaff._id}`, formData);
       } else {
@@ -79,9 +95,9 @@ export const StaffManagement: React.FC = () => {
         phone: '',
         active: true
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to save staff:', error);
-      alert('Không thể lưu thông tin nhân viên');
+      alert(error?.message || 'Không thể lưu thông tin nhân viên');
     }
   };
 
@@ -99,7 +115,7 @@ export const StaffManagement: React.FC = () => {
   const getRoleBadge = (role: string) => {
     switch (role) {
       case 'admin':
-        return <span className="px-2 py-1 rounded-full bg-purple-100 text-purple-700 text-xs font-bold">Quản trị viên</span>;
+        return <span className="px-2 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold border border-amber-300">👑 Admin</span>;
       case 'sales':
         return <span className="px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-bold">Bán hàng</span>;
       case 'warehouse':
@@ -244,8 +260,9 @@ export const StaffManagement: React.FC = () => {
                         </button>
                         <button 
                           onClick={() => handleDelete(member._id)}
-                          className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-lg transition-colors"
-                          disabled={member.username === 'admin'}
+                          className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                          disabled={member.role === 'admin'}
+                          title={member.role === 'admin' ? 'Không thể xóa tài khoản Admin' : 'Xóa nhân viên'}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -310,12 +327,15 @@ export const StaffManagement: React.FC = () => {
                   className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
                   value={formData.role}
                   onChange={e => setFormData({...formData, role: e.target.value as any})}
-                  disabled={editingStaff?.username === 'admin'}
+                  disabled={editingStaff?.role === 'admin'}
                 >
-                  <option value="admin">Quản trị viên</option>
+                  <option value="admin">👑 Admin (Quản trị cao nhất)</option>
                   <option value="sales">Nhân viên bán hàng</option>
                   <option value="warehouse">Nhân viên kho</option>
                 </select>
+                {formData.role === 'admin' && staff.some(s => s.role === 'admin' && s._id !== editingStaff?._id) && (
+                  <p className="text-xs text-red-500 mt-1">⚠️ Đã có tài khoản Admin trong hệ thống</p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -344,7 +364,7 @@ export const StaffManagement: React.FC = () => {
                   id="active"
                   checked={formData.active}
                   onChange={e => setFormData({...formData, active: e.target.checked})}
-                  disabled={editingStaff?.username === 'admin'}
+                  disabled={editingStaff?.role === 'admin'}
                 />
                 <label htmlFor="active" className="text-sm font-medium text-slate-700">Kích hoạt tài khoản</label>
               </div>

@@ -99,14 +99,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const filteredMenuItems = menuItems.filter(item => {
     if (!item.roles) return true;
     if (!user) return false;
-    
     const userRole = user.role.toLowerCase();
-    return item.roles.some(role => {
-      const r = role.toLowerCase();
-      // Match 'admin' with 'administrator' or 'admin'
-      if (r === 'admin' && (userRole === 'admin' || userRole === 'administrator')) return true;
-      return r === userRole;
-    });
+    return item.roles.includes(userRole);
   });
 
   return (

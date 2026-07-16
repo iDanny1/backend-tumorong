@@ -164,7 +164,12 @@ export default function App() {
       setUser(userData);
       setIsLoggedIn(true);
       localStorage.setItem('admin_user', JSON.stringify(userData));
-      setActiveMenu(userData.role === 'warehouse' ? 'Quản lý kho' : 'Đơn hàng');
+      // Chuyển hướng theo role
+      if (userData.role === 'warehouse') {
+        setActiveMenu('Quản lý kho');
+      } else {
+        setActiveMenu('Đơn hàng');
+      }
     } catch (err: any) {
       console.error('Login connection error:', err);
       alert(err.message || 'Sai tài khoản hoặc mật khẩu!');
