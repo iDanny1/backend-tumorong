@@ -57,6 +57,7 @@ const Product: Model<IProduct> = mongoose.model('Product', productSchema);
 // Order
 interface IOrder extends Document {
   orderId?: string;
+  orderCode?: string;    // Mã đơn hàng dạng DH + timestamp (Zalo Mini App)
   customerName?: string;
   customerPhone?: string;
   customer?: object;
@@ -81,6 +82,7 @@ interface IOrder extends Document {
 }
 const orderSchema = new Schema<IOrder>({
   orderId: String,
+  orderCode: { type: String, index: true },
   customerName: String,
   customerPhone: String,
   customer: Schema.Types.Mixed,
@@ -466,7 +468,27 @@ async function startServer() {
   const ZALO_SECRET_KEY = process.env.ZALO_SECRET_KEY || "G8yOT6fT2I7xOc6mV4Jw";
 
   // Middleware
-  app.use(cors());
+  // Whitelist domain Zalo Mini App + mọi origin cho API public
+  const allowedOrigins = [
+    'https://h5.zdn.vn',
+    'https://zaui.zdn.vn',
+    'https://miniapp.tumorong.com',
+    /\.zdn\.vn$/,
+    /\.zalo\.me$/
+  ];
+  app.use(cors({
+    origin: (origin, callback) => {
+      // Cho phép requests không có origin (mobile apps, Postman, server-to-server)
+      if (!origin) return callback(null, true);
+      const isAllowed = allowedOrigins.some(o =>
+        typeof o === 'string' ? o === origin : o.test(origin)
+      );
+      callback(null, isAllowed ? origin : '*');
+    },
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'access_token'],
+    credentials: true
+  }));
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use((req, res, next) => {
@@ -539,7 +561,16 @@ async function startServer() {
   // --- ORDERS ---
   app.get('/api/orders', async (req, res) => {
     try {
-      const docs = await Order.find({}).sort({ createdAt: -1 });
+      const filter: any = {};
+      // Lọc theo status nếu có: ?status=pending hoặc ?status=confirmed,...
+      if (req.query.status) {
+        filter.status = req.query.status;
+      }
+      // Lọc theo platform nếu cần: ?platform=Zalo+Mini+App
+      if (req.query.platform) {
+        filter.platform = req.query.platform;
+      }
+      const docs = await Order.find(filter).sort({ createdAt: -1 });
       res.json(docs);
     } catch (err) {
       res.status(500).json({ error: String(err) });
@@ -567,20 +598,48 @@ async function startServer() {
         discountAmount
       } = req.body;
 
+      // ── VALIDATION ──────────────────────────────────────────────────────────
+      const resolvedName  = customerName  || zaloName  || zaloTokenName  || '';
+      const resolvedPhone = customerPhone || zaloPhone || zaloTokenPhone || '';
+      const resolvedAddr  = address || '';
+
+      if (!resolvedName.trim()) {
+        return res.status(400).json({ success: false, message: 'Vui lòng cung cấp tên khách hàng' });
+      }
+      if (!resolvedPhone.trim()) {
+        return res.status(400).json({ success: false, message: 'Vui lòng cung cấp số điện thoại' });
+      }
+      if (!resolvedAddr.trim()) {
+        return res.status(400).json({ success: false, message: 'Vui lòng cung cấp địa chỉ giao hàng' });
+      }
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ success: false, message: 'Đơn hàng phải có ít nhất 1 sản phẩm' });
+      }
+      const parsedTotal = Number(totalAmount);
+      if (isNaN(parsedTotal) || parsedTotal <= 0) {
+        return res.status(400).json({ success: false, message: 'Tổng tiền đơn hàng không hợp lệ' });
+      }
+
+      // ── TẠO MÃ ĐƠN HÀNG (DH + timestamp) ──────────────────────────────────
+      const orderCode = `DH${Date.now()}`;
+
+      // ── BUILD ORDER DATA ────────────────────────────────────────────────────
       const orderData = {
-        customerName: customerName || zaloName || zaloTokenName || 'Khách Zalo',
-        customerPhone: customerPhone || zaloPhone || zaloTokenPhone || 'N/A',
-        address: address || 'Zalo Mini App',
-        products: items || [],
-        totalAmount: Number(totalAmount) || 0,
-        total: Number(totalAmount) || 0,
-        shippingFee: shippingFee || 0,
+        orderCode,
+        customerName: resolvedName,
+        customerPhone: resolvedPhone,
+        address: resolvedAddr,
+        items: items || [],
+        products: items || [],   // backward-compat với admin panel
+        totalAmount: parsedTotal,
+        total: parsedTotal,
+        shippingFee: Number(shippingFee) || 0,
         note: note || '',
         shippingMethod: shippingMethod || 'nhanh',
         paymentMethod: paymentMethod || 'cod',
         invoice: invoice || null,
-        status: 'Chờ xác nhận',
-        paymentStatus: paymentMethod === 'cod' ? 'Chưa thanh toán' : 'Đã thanh toán',
+        status: 'pending',         // mặc định: chờ xử lý
+        paymentStatus: (paymentMethod === 'cod') ? 'Chưa thanh toán' : 'Đã thanh toán',
         platform: 'Zalo Mini App',
         voucherCode: voucherCode || '',
         discountAmount: Number(discountAmount) || 0,
@@ -588,9 +647,9 @@ async function startServer() {
       };
 
       const newOrder = await Order.create(orderData);
-      console.log('✅ Đơn hàng Zalo mới:', newOrder._id);
+      console.log(`✅ Đơn hàng Zalo mới: ${orderCode} | _id: ${newOrder._id}`);
 
-      // --- CẬP NHẬT LƯỢT DÙNG VOUCHER ---
+      // ── CẬP NHẬT LƯỢT DÙNG VOUCHER ─────────────────────────────────────────
       if (voucherCode) {
         await Voucher.findOneAndUpdate(
           { code: voucherCode.toUpperCase() },
@@ -598,51 +657,83 @@ async function startServer() {
         ).catch(err => console.error("Lỗi update voucher:", err));
       }
 
-      // --- TỰ ĐỘNG LƯU KHÁCH HÀNG ---
-      if (orderData.customerPhone && orderData.customerPhone !== 'N/A') {
-        const existingCustomer = await Customer.findOne({ phone: orderData.customerPhone });
+      // ── TỰ ĐỘNG LƯU / CẬP NHẬT KHÁCH HÀNG ─────────────────────────────────
+      if (resolvedPhone) {
+        const existingCustomer = await Customer.findOne({ phone: resolvedPhone });
         if (existingCustomer) {
-          // Cộng dồn
           existingCustomer.ordersCount = (existingCustomer.ordersCount || 0) + 1;
-          existingCustomer.totalSpent = (existingCustomer.totalSpent || 0) + orderData.totalAmount;
-          existingCustomer.lastAccess = new Date().toISOString();
-          
-          if (orderData.address && orderData.address !== 'Zalo Mini App') {
-            existingCustomer.address = orderData.address;
-          }
-          if (orderData.customerName && orderData.customerName !== 'Khách Zalo' && orderData.customerName !== existingCustomer.name) {
-            existingCustomer.name = orderData.customerName;
-          }
-
+          existingCustomer.totalSpent  = (existingCustomer.totalSpent  || 0) + parsedTotal;
+          existingCustomer.lastAccess  = new Date().toISOString();
+          if (resolvedAddr) existingCustomer.address = resolvedAddr;
+          if (resolvedName && resolvedName !== existingCustomer.name) existingCustomer.name = resolvedName;
           await existingCustomer.save();
         } else {
-          // Tạo mới (không overwrite sau này)
           await Customer.create({
-            name: orderData.customerName,
-            phone: orderData.customerPhone,
-            address: orderData.address !== 'Zalo Mini App' ? orderData.address : '',
+            name: resolvedName,
+            phone: resolvedPhone,
+            address: resolvedAddr,
             ordersCount: 1,
-            totalSpent: orderData.totalAmount,
+            totalSpent: parsedTotal,
             type: 'retail',
             lastAccess: new Date().toISOString()
           });
         }
       }
 
-      res.status(201).json({ message: "Chốt đơn thành công!", data: newOrder });
+      // ── PHẢN HỒI THÀNH CÔNG ─────────────────────────────────────────────────
+      return res.status(201).json({
+        success: true,
+        orderCode,
+        message: 'Đặt hàng thành công'
+      });
     } catch (err) {
       console.error('❌ Lỗi tạo đơn hàng:', err);
-      res.status(500).json({ error: "Không thể lưu đơn hàng" });
+      return res.status(500).json({ success: false, message: 'Không thể lưu đơn hàng, vui lòng thử lại' });
     }
   });
 
   app.get('/api/orders/:id', async (req, res) => {
     try {
-      const doc = await Order.findById(req.params.id);
-      if (!doc) return res.status(404).json({ message: "Không tìm thấy đơn hàng" });
+      const { id } = req.params;
+      // Hỗ trợ tìm theo orderCode (DH...) hoặc MongoDB _id
+      let doc = id.startsWith('DH')
+        ? await Order.findOne({ orderCode: id })
+        : null;
+      if (!doc) {
+        // Thử tìm theo _id (bắt lỗi ObjectId không hợp lệ)
+        try { doc = await Order.findById(id); } catch (_) {}
+      }
+      if (!doc) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
       res.json(doc);
     } catch (err) {
       res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // PATCH /api/orders/:id — Cập nhật trạng thái đơn hàng (pending/confirmed/shipping/delivered/cancelled)
+  app.patch('/api/orders/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const allowedFields = ['status', 'paymentStatus', 'note', 'ghnOrderCode'];
+      const update: any = {};
+      for (const field of allowedFields) {
+        if (req.body[field] !== undefined) update[field] = req.body[field];
+      }
+      if (Object.keys(update).length === 0) {
+        return res.status(400).json({ success: false, message: 'Không có trường hợp lệ để cập nhật' });
+      }
+
+      // Tìm theo orderCode hoặc _id
+      let doc = id.startsWith('DH')
+        ? await Order.findOneAndUpdate({ orderCode: id }, { $set: update }, { new: true })
+        : null;
+      if (!doc) {
+        try { doc = await Order.findByIdAndUpdate(id, { $set: update }, { new: true }); } catch (_) {}
+      }
+      if (!doc) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
+      res.json({ success: true, data: doc });
+    } catch (err) {
+      res.status(500).json({ success: false, message: String(err) });
     }
   });
 
@@ -660,7 +751,7 @@ async function startServer() {
       await Order.findByIdAndDelete(req.params.id);
       res.json({ success: true });
     } catch (err) {
-      res.status(500).json({ error: "Lỗi khi xóa đơn hàng" });
+      res.status(500).json({ error: 'Lỗi khi xóa đơn hàng' });
     }
   });
 
