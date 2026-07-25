@@ -1,0 +1,2 @@
+runtime: nodejs18 # Hoặc nodejs20 tùy phiên bản bạn dùng
+instance_class: F1
