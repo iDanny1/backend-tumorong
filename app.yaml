@@ -1,2 +1,11 @@
-runtime: nodejs18 # Hoặc nodejs20 tùy phiên bản bạn dùng
+runtime: nodejs22 # Hoặc nodejs20 tùy phiên bản bạn dùng
 instance_class: F1
+
+env_variables:
+  ZALO_PRIVATE_KEY: "6cdea014057b31f83d084e914c12ab2a"
+  ZALO_SECRET_KEY: "G8yOT6fT2I7xOc6mV4Jw"
+  GHN_TOKEN: "c0e79cba-3ef4-11f1-9107-4a16704feeb7"
+  GHN_SHOP_ID: "5945053"
+  NODE_ENV: "production"
+  PORT: "8080"
+  MONGODB_URI: "mongodb://ecom_db_user:Tumorong88@ac-dflu9e4-shard-00-00.lxkkvkc.mongodb.net:27017,ac-dflu9e4-shard-00-01.lxkkvkc.mongodb.net:27017,ac-dflu9e4-shard-00-02.lxkkvkc.mongodb.net:27017/ginseng?ssl=true&authSource=admin&retryWrites=true&w=majority&appName=Cluster0"

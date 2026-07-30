@@ -682,44 +682,34 @@ async function startServer() {
       }
 
       // ── TẠO CHỮ KÝ ZALO PAYMENT (HMAC-SHA256) ──────────────────────────────
-      // Dùng cho Payment.createOrder phía Frontend (Zalo Mini App)
+      // Bắt buộc theo yêu cầu Zalo: dùng cho Payment.createOrder phía Mini App
       let mac: string | undefined;
-      const ZALO_PRIVATE_KEY = process.env.ZALO_PRIVATE_KEY;
+      const ZALO_PRIVATE_KEY = process.env.ZALO_PRIVATE_KEY || "6cdea014057b31f83d084e914c12ab2a";
       if (ZALO_PRIVATE_KEY) {
         try {
           const macData: Record<string, string> = {
-            amount: String(parsedTotal),
-            desc: `Đặt hàng - Mã đơn: ${orderCode}`,
-            extradata: JSON.stringify({
-              orderId: orderCode,
-              customerName: resolvedName,
-              customerPhone: resolvedPhone,
-            }),
-            item: JSON.stringify(
-              items.map((i: any) => ({ id: String(i.id), amount: i.price * i.quantity }))
-            ),
-            method: JSON.stringify({ id: 'COD', isCustom: false }),
+            amount:     String(parsedTotal),
+            desc:       `Đặt hàng - Mã đơn: ${orderCode}`,
+            extradata:  JSON.stringify({ orderId: orderCode, customerName: resolvedName, customerPhone: resolvedPhone }),
+            item:       JSON.stringify(items.map((i: any) => ({ id: String(i.id), amount: i.price * i.quantity }))),
+            method:     JSON.stringify({ id: 'COD', isCustom: false }),
           };
-          // Sắp xếp key A → Z rồi nối thành chuỗi key=value&...
-          const dataString = Object.keys(macData)
-            .sort()
-            .map(k => `${k}=${macData[k]}`)
-            .join('&');
+          // Zalo yêu cầu sắp xếp key A→Z, nối key=value&...
+          const dataString = Object.keys(macData).sort().map(k => `${k}=${macData[k]}`).join('&');
           mac = crypto.createHmac('sha256', ZALO_PRIVATE_KEY).update(dataString).digest('hex');
-          console.log(`🔐 MAC đã tạo cho đơn ${orderCode}`);
+          console.log(`🔐 MAC đã tạo cho đơn ${orderCode}: ${mac}`);
         } catch (macErr) {
           console.error('⚠️ Lỗi tạo MAC Zalo Payment:', macErr);
-          // Không dừng flow — đơn hàng đã lưu thành công, chỉ thiếu mac
         }
       } else {
-        console.warn('⚠️ ZALO_PRIVATE_KEY chưa được cấu hình trong .env — bỏ qua tạo MAC');
+        console.error('❌ ZALO_PRIVATE_KEY chưa được cấu hình — MAC không được tạo!');
       }
 
       // ── PHẢN HỒI THÀNH CÔNG ─────────────────────────────────────────────────
       return res.status(201).json({
         success: true,
         orderCode,
-        ...(mac !== undefined && { mac }),   // chỉ trả về mac nếu tạo thành công
+        ...(mac !== undefined && { mac }),
         message: 'Đặt hàng thành công'
       });
     } catch (err) {
