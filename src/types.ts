@@ -28,6 +28,10 @@ export interface Order {
   paymentStatus?: string;
   platform?: string;
   order_code?: string;
+  stockDeducted?: boolean;
+  address?: string;
+  discountAmount?: number;
+  invoice?: any;
   createdAt: string;
 }
 

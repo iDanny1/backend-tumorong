@@ -180,14 +180,7 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
                   </td>
                   <td className="p-4">
                     <div className="flex items-center gap-2 text-sm text-slate-700">
-                      {product.stock || 10000}
-                      <button 
-                        onClick={() => onEditProduct(product)}
-                        className="p-1 hover:bg-slate-100 rounded text-emerald-600 transition-colors"
-                        title="Sửa tồn kho"
-                      >
-                        <Pencil className="w-3 h-3" />
-                      </button>
+                      <span className="font-semibold text-slate-800">{typeof product.stock === 'number' ? product.stock : 0}</span>
                     </div>
                   </td>
                   <td className="p-4">

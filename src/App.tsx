@@ -284,6 +284,7 @@ export default function App() {
       
       setShowOrderModal(false);
       fetchOrders();
+      fetchProducts(); // Cập nhật lại tồn kho sản phẩm nếu đơn hàng được xác nhận hoặc hủy
       // Cập nhật lại selectedOrder để UI phản hồi ngay lập tức
       if (selectedOrder && selectedOrder._id === orderId) {
         setSelectedOrder(prev => prev ? { ...prev, ...updateData } : null);

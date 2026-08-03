@@ -235,10 +235,14 @@ export const ProductEditPage: React.FC<ProductEditPageProps> = ({
             <h2 className="text-sm font-bold text-slate-800 mb-4">Thiết lập số lượng</h2>
             <div className="grid grid-cols-3 gap-6">
               <div>
-                <label className="block text-11 font-bold text-slate-500 uppercase mb-1">Số lượng tồn kho</label>
+                <label className="block text-11 font-bold text-slate-500 uppercase mb-1">
+                  Số lượng tồn kho <span className="text-emerald-600 font-normal text-10">(Chỉ xem - Sửa tại Quản lý kho)</span>
+                </label>
                 <NumberInput 
                   value={formData.stock}
-                  onChange={val => setFormData({...formData, stock: val})}
+                  disabled={true}
+                  className="bg-slate-100 text-slate-500 cursor-not-allowed font-bold border-slate-200"
+                  onChange={() => {}}
                 />
               </div>
               <div>
@@ -348,14 +352,13 @@ export const ProductEditPage: React.FC<ProductEditPageProps> = ({
               </div>
               <div>
                 <label className="block text-11 font-bold text-slate-500 uppercase mb-2">Loại sản phẩm</label>
-                <select 
-                  className="w-full px-3 py-2 border border-slate-200 rounded text-sm outline-none"
-                  value={formData.type || 'Sản phẩm dễ vỡ'}
+                <input 
+                  type="text"
+                  placeholder="Nhập loại sản phẩm (VD: Sản phẩm dễ vỡ)"
+                  className="w-full px-3 py-2 border border-slate-200 rounded text-sm outline-none focus:border-emerald-500"
+                  value={formData.type || ''}
                   onChange={e => setFormData({...formData, type: e.target.value})}
-                >
-                  <option>Sản phẩm dễ vỡ</option>
-                  <option>Sản phẩm thường</option>
-                </select>
+                />
               </div>
               
               <div>
@@ -394,15 +397,13 @@ export const ProductEditPage: React.FC<ProductEditPageProps> = ({
               </div>
               <div>
                 <label className="block text-11 font-bold text-slate-500 uppercase mb-2">Thương hiệu</label>
-                <select 
-                  className="w-full px-3 py-2 border border-slate-200 rounded text-sm outline-none"
-                  value={formData.brand || 'Thương hiệu'}
+                <input 
+                  type="text"
+                  placeholder="Nhập thương hiệu"
+                  className="w-full px-3 py-2 border border-slate-200 rounded text-sm outline-none focus:border-emerald-500"
+                  value={formData.brand || ''}
                   onChange={e => setFormData({...formData, brand: e.target.value})}
-                >
-                  <option>Sâm ngọc linh Tu Mơ Rông Kon Tun</option>
-                  <option>Samoza</option>
-          
-                </select>
+                />
               </div>
               <div>
                 <label className="block text-11 font-bold text-slate-500 uppercase mb-2">Thứ tự hiển thị sản phẩm</label>

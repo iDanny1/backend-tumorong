@@ -32,12 +32,14 @@ interface IProduct extends Document {
   images?: string[];
   status?: string;
   stock?: number;
-  warehouseStock?: number;
+  warehouseStock?: any;
   isFeatured?: boolean;
   active?: boolean;
   categoryIds?: string[];
   categoryNames?: string[];
   createdAt: string;
+  sku?: string;
+  barcode?: string;
 }
 const productSchema = new Schema<IProduct>({
   name: String,
@@ -46,12 +48,14 @@ const productSchema = new Schema<IProduct>({
   images: [String],
   status: String,
   stock: Number,
-  warehouseStock: Number,
+  warehouseStock: Schema.Types.Mixed,
   isFeatured: Boolean,
   active: Boolean,
   categoryIds: [String],
   categoryNames: [String],
-  createdAt: { type: String, default: () => new Date().toISOString() }
+  createdAt: { type: String, default: () => new Date().toISOString() },
+  sku: String,
+  barcode: String
 });
 const Product: Model<IProduct> = mongoose.model('Product', productSchema);
 
@@ -79,6 +83,7 @@ interface IOrder extends Document {
   ghnOrderCode?: string;
   voucherCode?: string;
   discountAmount?: number;
+  stockDeducted?: boolean;
   createdAt: string;
 }
 const orderSchema = new Schema<IOrder>({
@@ -104,9 +109,119 @@ const orderSchema = new Schema<IOrder>({
   ghnOrderCode: String,
   voucherCode: String,
   discountAmount: Number,
+  stockDeducted: { type: Boolean, default: false },
   createdAt: { type: String, default: () => new Date().toISOString() }
 });
 const Order: Model<IOrder> = mongoose.model('Order', orderSchema);
+
+// Helper function to manage inventory deduction/restoration when order status changes
+async function syncOrderInventory(orderDoc: any, newStatus?: string) {
+  try {
+    if (!orderDoc) return;
+    const status = newStatus || orderDoc.status;
+    if (!status) return;
+
+    const CONFIRMED_STATUSES = ['confirmed', 'đã xác nhận', 'đang chuẩn bị', 'đang giao', 'hoàn thành'];
+    const CANCELLED_STATUSES = ['cancelled', 'đã hủy'];
+
+    const statusLower = String(status).toLowerCase();
+    const isNowConfirmed = CONFIRMED_STATUSES.some(s => statusLower.includes(s));
+    const isNowCancelled = CANCELLED_STATUSES.some(s => statusLower.includes(s));
+
+    const items = (orderDoc.items && orderDoc.items.length > 0) ? orderDoc.items : (orderDoc.products || []);
+    if (!Array.isArray(items) || items.length === 0) return;
+
+    // Case 1: Order confirmed & stock not deducted yet -> DEDUCT
+    if (isNowConfirmed && !orderDoc.stockDeducted) {
+      for (const item of items) {
+        const productId = item.id || item._id || item.productId;
+        if (!productId) continue;
+        const qty = Number(item.quantity) || 1;
+
+        const product = await Product.findById(productId);
+        if (!product) continue;
+
+        let warehouseStock = product.warehouseStock;
+        if (typeof warehouseStock !== 'object' || warehouseStock === null) {
+          warehouseStock = {};
+        } else {
+          warehouseStock = { ...warehouseStock };
+        }
+
+        const warehouseKeys = Object.keys(warehouseStock);
+
+        if (warehouseKeys.length > 0) {
+          const targetWh = orderDoc.store || orderDoc.warehouseId;
+          if (targetWh && warehouseStock[targetWh] !== undefined) {
+            warehouseStock[targetWh] = Math.max(0, (Number(warehouseStock[targetWh]) || 0) - qty);
+          } else {
+            let remaining = qty;
+            for (const key of warehouseKeys) {
+              if (remaining <= 0) break;
+              const cur = Number(warehouseStock[key]) || 0;
+              if (cur > 0) {
+                const dec = Math.min(cur, remaining);
+                warehouseStock[key] = cur - dec;
+                remaining -= dec;
+              }
+            }
+          }
+          const newTotal = Object.values(warehouseStock).reduce((sum: number, val: any) => sum + (Number(val) || 0), 0);
+          await Product.findByIdAndUpdate(productId, {
+            $set: { warehouseStock, stock: newTotal }
+          });
+        } else {
+          const newTotal = Math.max(0, (product.stock || 0) - qty);
+          await Product.findByIdAndUpdate(productId, {
+            $set: { stock: newTotal }
+          });
+        }
+      }
+      await Order.findByIdAndUpdate(orderDoc._id, { $set: { stockDeducted: true } });
+      orderDoc.stockDeducted = true;
+      console.log(`📦 Đã trừ tồn kho cho đơn hàng ${orderDoc.orderCode || orderDoc._id}`);
+    }
+    // Case 2: Order cancelled & stock was deducted -> RESTORE
+    else if (isNowCancelled && orderDoc.stockDeducted) {
+      for (const item of items) {
+        const productId = item.id || item._id || item.productId;
+        if (!productId) continue;
+        const qty = Number(item.quantity) || 1;
+
+        const product = await Product.findById(productId);
+        if (!product) continue;
+
+        let warehouseStock = product.warehouseStock;
+        if (typeof warehouseStock !== 'object' || warehouseStock === null) {
+          warehouseStock = {};
+        } else {
+          warehouseStock = { ...warehouseStock };
+        }
+
+        const warehouseKeys = Object.keys(warehouseStock);
+
+        if (warehouseKeys.length > 0) {
+          const targetWh = orderDoc.store || orderDoc.warehouseId || warehouseKeys[0];
+          warehouseStock[targetWh] = (Number(warehouseStock[targetWh]) || 0) + qty;
+          const newTotal = Object.values(warehouseStock).reduce((sum: number, val: any) => sum + (Number(val) || 0), 0);
+          await Product.findByIdAndUpdate(productId, {
+            $set: { warehouseStock, stock: newTotal }
+          });
+        } else {
+          const newTotal = (product.stock || 0) + qty;
+          await Product.findByIdAndUpdate(productId, {
+            $set: { stock: newTotal }
+          });
+        }
+      }
+      await Order.findByIdAndUpdate(orderDoc._id, { $set: { stockDeducted: false } });
+      orderDoc.stockDeducted = false;
+      console.log(`🔄 Đã hoàn trả tồn kho cho đơn hàng bị hủy ${orderDoc.orderCode || orderDoc._id}`);
+    }
+  } catch (err) {
+    console.error("❌ Lỗi khi đồng bộ tồn kho đơn hàng:", err);
+  }
+}
 
 // User
 interface IUser extends Document {
@@ -202,9 +317,12 @@ const Warehouse: Model<IWarehouse> = mongoose.model('Warehouse', warehouseSchema
 interface IVoucher extends Document {
   code: string;
   discount?: number;
+  discountAmount?: number;
+  discountPercentage?: number;
   discountType?: string;
   minOrderValue?: number;
   maxDiscount?: number;
+  maxDiscountAmount?: number;
   isActive?: boolean;
   expiresAt?: string;
   usageLimit?: number;
@@ -214,9 +332,12 @@ interface IVoucher extends Document {
 const voucherSchema = new Schema<IVoucher>({
   code: { type: String, unique: true },
   discount: Number,
+  discountAmount: Number,
+  discountPercentage: Number,
   discountType: String,
   minOrderValue: Number,
   maxDiscount: Number,
+  maxDiscountAmount: Number,
   isActive: Boolean,
   expiresAt: String,
   usageLimit: Number,
@@ -649,6 +770,7 @@ async function startServer() {
 
       const newOrder = await Order.create(orderData);
       console.log(`✅ Đơn hàng Zalo mới: ${orderCode} | _id: ${newOrder._id}`);
+      await syncOrderInventory(newOrder, newOrder.status);
 
       // ── CẬP NHẬT LƯỢT DÙNG VOUCHER ─────────────────────────────────────────
       if (voucherCode) {
@@ -757,6 +879,8 @@ async function startServer() {
         try { doc = await Order.findByIdAndUpdate(id, { $set: update }, { new: true }); } catch (_) {}
       }
       if (!doc) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
+
+      await syncOrderInventory(doc, doc.status);
       res.json({ success: true, data: doc });
     } catch (err) {
       res.status(500).json({ success: false, message: String(err) });
@@ -765,7 +889,15 @@ async function startServer() {
 
   app.put('/api/orders/:id', async (req, res) => {
     try {
-      await Order.findByIdAndUpdate(req.params.id, { $set: req.body });
+      let doc = req.params.id.startsWith('DH')
+        ? await Order.findOneAndUpdate({ orderCode: req.params.id }, { $set: req.body }, { new: true })
+        : null;
+      if (!doc) {
+        try { doc = await Order.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true }); } catch (_) {}
+      }
+      if (doc) {
+        await syncOrderInventory(doc, doc.status);
+      }
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: String(err) });
