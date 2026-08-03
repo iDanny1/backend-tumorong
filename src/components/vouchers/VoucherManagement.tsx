@@ -107,9 +107,9 @@ export const VoucherManagement: React.FC = () => {
   };
 
   const filteredVouchers = vouchers.filter(v => 
-    v.type === activeTypeTab && (
-      v.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      v.description.toLowerCase().includes(searchQuery.toLowerCase())
+    (v.type || 'fixed') === activeTypeTab && (
+      (v.code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (v.description || '').toLowerCase().includes(searchQuery.toLowerCase())
     )
   );
 

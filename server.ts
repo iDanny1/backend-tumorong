@@ -316,6 +316,8 @@ const Warehouse: Model<IWarehouse> = mongoose.model('Warehouse', warehouseSchema
 // Voucher
 interface IVoucher extends Document {
   code: string;
+  type?: string;
+  description?: string;
   discount?: number;
   discountAmount?: number;
   discountPercentage?: number;
@@ -323,6 +325,8 @@ interface IVoucher extends Document {
   minOrderValue?: number;
   maxDiscount?: number;
   maxDiscountAmount?: number;
+  startDate?: string;
+  endDate?: string;
   isActive?: boolean;
   expiresAt?: string;
   usageLimit?: number;
@@ -331,6 +335,8 @@ interface IVoucher extends Document {
 }
 const voucherSchema = new Schema<IVoucher>({
   code: { type: String, unique: true },
+  type: { type: String, default: 'fixed' },
+  description: String,
   discount: Number,
   discountAmount: Number,
   discountPercentage: Number,
@@ -338,7 +344,9 @@ const voucherSchema = new Schema<IVoucher>({
   minOrderValue: Number,
   maxDiscount: Number,
   maxDiscountAmount: Number,
-  isActive: Boolean,
+  startDate: String,
+  endDate: String,
+  isActive: { type: Boolean, default: true },
   expiresAt: String,
   usageLimit: Number,
   usedCount: { type: Number, default: 0 },
@@ -519,6 +527,42 @@ async function seedData() {
         }
       ]);
       console.log('Orders seeded.');
+    }
+
+    // Seed Vouchers
+    const voucherCount = await Voucher.countDocuments();
+    if (voucherCount === 0) {
+      console.log('Seeding vouchers...');
+      await Voucher.insertMany([
+        {
+          code: 'TUMORONG100K',
+          description: 'Giảm 100.000đ cho đơn từ 500.000đ',
+          type: 'fixed',
+          discountAmount: 100000,
+          minOrderValue: 500000,
+          usageLimit: 100,
+          usedCount: 0,
+          startDate: new Date().toISOString().split('T')[0],
+          endDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          isActive: true,
+          createdAt: new Date().toISOString()
+        },
+        {
+          code: 'SAMNGOCLINH10',
+          description: 'Giảm 10% tối đa 200.000đ cho đơn từ 1.000.000đ',
+          type: 'percentage',
+          discountPercentage: 10,
+          maxDiscountAmount: 200000,
+          minOrderValue: 1000000,
+          usageLimit: 100,
+          usedCount: 0,
+          startDate: new Date().toISOString().split('T')[0],
+          endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          isActive: true,
+          createdAt: new Date().toISOString()
+        }
+      ]);
+      console.log('Vouchers seeded.');
     }
 
     console.log('✅ Database seeding complete.');
@@ -1104,7 +1148,39 @@ async function startServer() {
   // --- VOUCHERS ---
   app.get('/api/vouchers', async (req, res) => {
     try {
-      const docs = await Voucher.find({}).sort({ createdAt: -1 });
+      let docs = await Voucher.find({}).sort({ createdAt: -1 });
+      if (docs.length === 0) {
+        await Voucher.create([
+          {
+            code: 'TUMORONG100K',
+            description: 'Giảm 100.000đ cho đơn từ 500.000đ',
+            type: 'fixed',
+            discountAmount: 100000,
+            minOrderValue: 500000,
+            usageLimit: 100,
+            usedCount: 0,
+            startDate: new Date().toISOString().split('T')[0],
+            endDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            isActive: true,
+            createdAt: new Date().toISOString()
+          },
+          {
+            code: 'SAMNGOCLINH10',
+            description: 'Giảm 10% tối đa 200.000đ cho đơn từ 1.000.000đ',
+            type: 'percentage',
+            discountPercentage: 10,
+            maxDiscountAmount: 200000,
+            minOrderValue: 1000000,
+            usageLimit: 100,
+            usedCount: 0,
+            startDate: new Date().toISOString().split('T')[0],
+            endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            isActive: true,
+            createdAt: new Date().toISOString()
+          }
+        ]);
+        docs = await Voucher.find({}).sort({ createdAt: -1 });
+      }
       res.json(docs);
     } catch (err) {
       res.status(500).json({ error: 'Lỗi tải voucher' });
@@ -1145,10 +1221,36 @@ async function startServer() {
   app.post('/api/vouchers/validate', async (req, res) => {
     try {
       const { code, orderTotal } = req.body;
+      if (!code) return res.status(400).json({ message: "Vui lòng nhập mã voucher" });
       const voucher = await Voucher.findOne({ code: code.toUpperCase(), isActive: true });
-      if (!voucher) return res.status(400).json({ message: "Mã không tồn tại hoặc đã hết hạn" });
-      if (orderTotal < (voucher.minOrderValue || 0)) return res.status(400).json({ message: "Đơn hàng chưa đạt giá trị tối thiểu" });
-      res.json(voucher);
+      if (!voucher) return res.status(400).json({ message: "Mã không tồn tại hoặc đã bị tắt" });
+
+      const total = Number(orderTotal) || 0;
+      if (total < (voucher.minOrderValue || 0)) {
+        return res.status(400).json({ 
+          message: `Đơn hàng chưa đạt giá trị tối thiểu (${(voucher.minOrderValue || 0).toLocaleString()}đ)` 
+        });
+      }
+
+      let discountAmount = 0;
+      if (voucher.type === 'percentage') {
+        const pct = voucher.discountPercentage || 0;
+        discountAmount = total * (pct / 100);
+        if (voucher.maxDiscountAmount && voucher.maxDiscountAmount > 0) {
+          discountAmount = Math.min(discountAmount, voucher.maxDiscountAmount);
+        }
+      } else {
+        discountAmount = voucher.discountAmount || voucher.discount || 0;
+      }
+
+      discountAmount = Math.min(discountAmount, total);
+
+      res.json({
+        success: true,
+        voucher,
+        discountAmount,
+        finalTotal: Math.max(0, total - discountAmount)
+      });
     } catch (err) {
       res.status(500).json({ error: 'Lỗi kiểm tra voucher' });
     }

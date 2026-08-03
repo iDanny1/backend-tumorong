@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Product, Order } from '../types';
-import { ShoppingCart, Eye, X, Plus, Minus, CheckCircle2 } from 'lucide-react';
+import { ShoppingCart, Eye, X, Plus, Minus, CheckCircle2, Tag } from 'lucide-react';
 import { api } from '../lib/api';
 
 interface CustomerUIProps {
@@ -29,6 +29,52 @@ export const CustomerUI: React.FC<CustomerUIProps> = ({
     address: '',
     note: ''
   });
+
+  const [voucherCode, setVoucherCode] = useState('');
+  const [discountAmount, setDiscountAmount] = useState(0);
+  const [appliedVoucher, setAppliedVoucher] = useState<any>(null);
+  const [voucherError, setVoucherError] = useState('');
+  const [availableVouchers, setAvailableVouchers] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetchAvailableVouchers();
+  }, []);
+
+  const fetchAvailableVouchers = async () => {
+    try {
+      const data = await api.get('/api/vouchers');
+      setAvailableVouchers(Array.isArray(data) ? data.filter(v => v.isActive) : []);
+    } catch (err) {
+      console.error('Error fetching vouchers:', err);
+    }
+  };
+
+  const applyVoucherCode = async (codeToApply: string) => {
+    setVoucherError('');
+    if (!codeToApply.trim()) return;
+    try {
+      const res = await api.post('/api/vouchers/validate', { 
+        code: codeToApply, 
+        orderTotal: cartTotal 
+      });
+      if (res.success) {
+        setAppliedVoucher(res.voucher);
+        setDiscountAmount(res.discountAmount);
+        setVoucherCode(res.voucher.code);
+      } else {
+        setVoucherError(res.message || 'Mã không hợp lệ');
+      }
+    } catch (err: any) {
+      setVoucherError(err.message || 'Mã voucher không hợp lệ');
+    }
+  };
+
+  const removeAppliedVoucher = () => {
+    setAppliedVoucher(null);
+    setDiscountAmount(0);
+    setVoucherCode('');
+    setVoucherError('');
+  };
 
   const addToCart = (product: Product, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -61,11 +107,12 @@ export const CustomerUI: React.FC<CustomerUIProps> = ({
   };
 
   const cartTotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+  const finalTotal = Math.max(0, cartTotal - discountAmount);
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const newOrder: Partial<Order> & { address?: string; note?: string; items?: any[]; totalAmount?: number } = {
+    const newOrder: Partial<Order> & { address?: string; note?: string; items?: any[]; totalAmount?: number; voucherCode?: string; discountAmount?: number } = {
       orderId: `ORD-${Math.floor(Math.random() * 1000000)}`,
       customerName: customerInfo.name,
       customerPhone: customerInfo.phone,
@@ -78,7 +125,9 @@ export const CustomerUI: React.FC<CustomerUIProps> = ({
         quantity: item.quantity 
       })),
       totalAmount: cartTotal,
-      total: cartTotal,
+      discountAmount: discountAmount,
+      voucherCode: appliedVoucher ? appliedVoucher.code : '',
+      total: finalTotal,
       paymentMethod: 'Thanh toán khi nhận hàng (COD)',
       shippingUnit: 'Giao hàng nhanh',
       store: 'Cửa hàng chính',
@@ -92,6 +141,7 @@ export const CustomerUI: React.FC<CustomerUIProps> = ({
       await api.post('/api/orders', newOrder);
 
       setCart([]);
+      removeAppliedVoucher();
       setShowCheckout(false);
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 5000);
@@ -268,7 +318,7 @@ export const CustomerUI: React.FC<CustomerUIProps> = ({
             {cart.length > 0 && (
               <div className="p-6 border-t border-slate-100 bg-slate-50 space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500 font-medium">Tổng cộng</span>
+                  <span className="text-slate-500 font-medium">Tạm tính</span>
                   <span className="text-2xl font-black text-slate-900">{cartTotal.toLocaleString()}đ</span>
                 </div>
                 <button 
@@ -289,7 +339,7 @@ export const CustomerUI: React.FC<CustomerUIProps> = ({
       {/* Checkout Modal */}
       {showCheckout && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[110] p-4">
-          <div className="bg-white rounded-3xl w-full max-w-lg p-8 shadow-2xl overflow-hidden relative">
+          <div className="bg-white rounded-3xl w-full max-w-lg p-8 shadow-2xl overflow-y-auto max-h-[90vh] relative">
             <button 
               onClick={() => setShowCheckout(false)}
               className="absolute top-6 right-6 p-2 hover:bg-slate-100 rounded-xl transition-colors"
@@ -298,7 +348,7 @@ export const CustomerUI: React.FC<CustomerUIProps> = ({
             </button>
             
             <h2 className="text-2xl font-bold text-slate-800 mb-2">Thông tin đặt hàng</h2>
-            <p className="text-slate-500 text-sm mb-8">Vui lòng điền thông tin để chúng tôi giao hàng sớm nhất</p>
+            <p className="text-slate-500 text-sm mb-6">Vui lòng điền thông tin để chúng tôi giao hàng sớm nhất</p>
             
             <form onSubmit={handleCheckout} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -336,20 +386,99 @@ export const CustomerUI: React.FC<CustomerUIProps> = ({
                   onChange={e => setCustomerInfo({...customerInfo, address: e.target.value})}
                 />
               </div>
+
+              {/* Mã giảm giá / Voucher */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
+                    <Tag className="w-4 h-4 text-emerald-600" />
+                    Mã giảm giá (Voucher)
+                  </label>
+                  {appliedVoucher && (
+                    <button 
+                      type="button"
+                      onClick={removeAppliedVoucher}
+                      className="text-xs font-bold text-red-500 hover:underline"
+                    >
+                      Bỏ áp dụng
+                    </button>
+                  )}
+                </div>
+
+                {appliedVoucher ? (
+                  <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl flex items-center justify-between text-xs">
+                    <div>
+                      <span className="font-bold text-emerald-800 uppercase block">{appliedVoucher.code}</span>
+                      <span className="text-emerald-600 font-medium">Giảm {discountAmount.toLocaleString()}đ</span>
+                    </div>
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500/20 outline-none text-xs font-bold uppercase"
+                      placeholder="Nhập mã (VD: TUMORONG100K)"
+                      value={voucherCode}
+                      onChange={e => setVoucherCode(e.target.value.toUpperCase())}
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => applyVoucherCode(voucherCode)}
+                      className="px-4 py-2.5 bg-emerald-900 text-white font-bold rounded-xl text-xs hover:bg-emerald-950 transition-all"
+                    >
+                      Áp dụng
+                    </button>
+                  </div>
+                )}
+
+                {voucherError && (
+                  <p className="text-xs font-medium text-red-500">{voucherError}</p>
+                )}
+
+                {!appliedVoucher && availableVouchers.length > 0 && (
+                  <div className="pt-1">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1.5">Voucher có sẵn:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {availableVouchers.map((v) => (
+                        <button
+                          key={v._id || v.code}
+                          type="button"
+                          onClick={() => {
+                            setVoucherCode(v.code);
+                            applyVoucherCode(v.code);
+                          }}
+                          className="px-3 py-1.5 bg-white border border-emerald-300 rounded-lg text-xs font-bold text-emerald-800 hover:bg-emerald-50 transition-all flex items-center gap-1 shadow-sm"
+                        >
+                          <Tag className="w-3 h-3 text-emerald-600" />
+                          {v.code}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5 ml-1">Ghi chú (không bắt buộc)</label>
                 <textarea 
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all min-h-[80px]"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all min-h-[70px]"
                   placeholder="Ví dụ: Giao giờ hành chính..."
                   value={customerInfo.note}
                   onChange={e => setCustomerInfo({...customerInfo, note: e.target.value})}
                 />
               </div>
               
-              <div className="pt-4 border-t border-slate-100 mt-6">
+              <div className="pt-4 border-t border-slate-100 mt-6 space-y-3">
+                {discountAmount > 0 && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-500">Giảm giá voucher:</span>
+                    <span className="font-bold text-emerald-600">-{discountAmount.toLocaleString()}đ</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between mb-6">
-                  <span className="text-slate-500">Tổng thanh toán:</span>
-                  <span className="text-2xl font-black text-emerald-900">{cartTotal.toLocaleString()}đ</span>
+                  <span className="text-slate-500 font-medium">Tổng thanh toán:</span>
+                  <span className="text-2xl font-black text-emerald-900">{finalTotal.toLocaleString()}đ</span>
                 </div>
                 <button className="w-full bg-emerald-900 text-white font-bold py-4 rounded-2xl hover:bg-emerald-950 transition-all shadow-lg shadow-emerald-900/20 active:scale-[0.98]">
                   Xác nhận đặt hàng
