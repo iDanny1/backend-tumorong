@@ -350,24 +350,14 @@ export const ProductEditPage: React.FC<ProductEditPageProps> = ({
                 <label className="block text-11 font-bold text-slate-500 uppercase mb-2">Loại sản phẩm</label>
                 <select 
                   className="w-full px-3 py-2 border border-slate-200 rounded text-sm outline-none"
-                  value={formData.type || 'Sản phẩm vật lý'}
+                  value={formData.type || 'Sản phẩm dễ vỡ'}
                   onChange={e => setFormData({...formData, type: e.target.value})}
                 >
-                  <option>Sản phẩm vật lý</option>
-                  <option>Sản phẩm số</option>
+                  <option>Sản phẩm dễ vỡ</option>
+                  <option>Sản phẩm thường</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-11 font-bold text-slate-500 uppercase mb-2">Đặt lịch</label>
-                <select 
-                  className="w-full px-3 py-2 border border-slate-200 rounded text-sm outline-none"
-                  value={formData.allowBooking ? 'Cho phép đặt lịch' : 'Không cho phép'}
-                  onChange={e => setFormData({...formData, allowBooking: e.target.value === 'Cho phép đặt lịch'})}
-                >
-                  <option>Cho phép đặt lịch</option>
-                  <option>Không cho phép</option>
-                </select>
-              </div>
+              
               <div>
                 <label className="block text-11 font-bold text-slate-500 uppercase mb-2">Danh mục sản phẩm (Chọn nhiều)</label>
                 <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-4 border border-slate-200 rounded-lg bg-slate-50">
@@ -409,9 +399,9 @@ export const ProductEditPage: React.FC<ProductEditPageProps> = ({
                   value={formData.brand || 'Thương hiệu'}
                   onChange={e => setFormData({...formData, brand: e.target.value})}
                 >
-                  <option>Thương hiệu</option>
-                  <option>Hoàn Kim Mã</option>
-                  <option>Agrivietnam</option>
+                  <option>Sâm ngọc linh Tu Mơ Rông Kon Tun</option>
+                  <option>Samoza</option>
+          
                 </select>
               </div>
               <div>
