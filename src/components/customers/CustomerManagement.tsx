@@ -8,7 +8,8 @@ import {
   BarChart3, 
   Settings,
   MessageCircle,
-  User
+  User,
+  Trash2
 } from 'lucide-react';
 import { Customer } from '../../types';
 import { cn } from '../../lib/utils';
@@ -22,6 +23,7 @@ interface CustomerManagementProps {
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   onRefresh?: () => void;
+  onDeleteCustomer?: (customerId: string) => void;
 }
 
 export const CustomerManagement: React.FC<CustomerManagementProps> = ({ 
@@ -30,7 +32,8 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
   onSelectCustomer,
   searchQuery,
   setSearchQuery,
-  onRefresh
+  onRefresh,
+  onDeleteCustomer
 }) => {
   const [activeTab, setActiveTab] = useState<'all' | 'wholesale'>(initialTab);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -183,7 +186,18 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                   onClick={() => onSelectCustomer(customer)}
                 >
                   <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
-                    <input type="checkbox" className="rounded border-slate-300 text-emerald-700 focus:ring-emerald-500" />
+                    <div className="flex items-center gap-2">
+                      {onDeleteCustomer && (
+                        <button 
+                          onClick={() => onDeleteCustomer(customer._id)}
+                          className="p-1 hover:bg-red-50 rounded text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Xóa khách hàng"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                      <input type="checkbox" className="rounded border-slate-300 text-emerald-700 focus:ring-emerald-500" />
+                    </div>
                   </td>
                   <td className="px-4 py-4">
                     <div className="flex items-center gap-3">

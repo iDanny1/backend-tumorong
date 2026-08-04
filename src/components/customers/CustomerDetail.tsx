@@ -13,7 +13,8 @@ import {
   TrendingUp, 
   Users, 
   Heart,
-  Inbox
+  Inbox,
+  Trash2
 } from 'lucide-react';
 import { Customer } from '../../types';
 import { cn } from '../../lib/utils';
@@ -22,9 +23,10 @@ interface CustomerDetailProps {
   customer: Customer;
   onBack: () => void;
   onUpdate: (customer: Customer) => void;
+  onDelete?: (customerId: string) => void;
 }
 
-export const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpdate }) => {
+export const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpdate, onDelete }) => {
   const [isWholesale, setIsWholesale] = useState(customer.type === 'wholesale');
 
   // Sync local state when customer prop changes
@@ -43,14 +45,25 @@ export const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4 mb-6">
-        <button 
-          onClick={onBack}
-          className="p-2 hover:bg-white rounded-lg text-slate-500 transition-colors border border-transparent hover:border-slate-200"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <h1 className="text-2xl font-bold text-slate-800">Chi tiết khách hàng</h1>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={onBack}
+            className="p-2 hover:bg-white rounded-lg text-slate-500 transition-colors border border-transparent hover:border-slate-200"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <h1 className="text-2xl font-bold text-slate-800">Chi tiết khách hàng</h1>
+        </div>
+        {onDelete && (
+          <button 
+            onClick={() => onDelete(customer._id)}
+            className="bg-white hover:bg-red-50 text-red-500 border border-red-200 font-bold py-2 px-4 rounded text-sm transition-all active:scale-95 flex items-center gap-2 shadow-sm"
+          >
+            <Trash2 className="w-4 h-4" />
+            Xóa khách hàng
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

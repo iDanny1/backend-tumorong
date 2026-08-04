@@ -9,8 +9,8 @@ import {
   Calendar as CalendarIcon,
   X,
   ChevronDown,
-  Check,
   Download,
+  Upload,
   Trash2,
   CreditCard
 } from 'lucide-react';
@@ -59,9 +59,9 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
   const [selectedPreset, setSelectedPreset] = useState<string>('');
   const [exportStatuses, setExportStatuses] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>({
     createdAt: true,
@@ -238,6 +238,26 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({
     setShowExportModal(false);
   };
 
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const baseUrl = (import.meta as any).env.VITE_API_URL || '';
+      const response = await fetch(`${baseUrl}/api/orders/import`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await response.json();
+      alert(data.message || 'Nhập thành công');
+      onRefresh();
+    } catch (error) {
+      alert('Lỗi khi nhập file Excel');
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const toggleExportStatus = (status: string) => {
     setExportStatuses(prev => 
       prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
@@ -365,12 +385,27 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({
             )}
           </div>
 
+          <input 
+            type="file" 
+            accept=".xlsx, .xls" 
+            className="hidden" 
+            ref={fileInputRef}
+            onChange={handleImport}
+          />
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-50 transition-all shadow-sm"
+          >
+            <Upload className="w-4 h-4" />
+            <span className="hidden sm:inline">Nhập Excel</span>
+          </button>
+          
           <button 
             onClick={() => setShowExportModal(true)}
             className="flex items-center gap-2 px-4 py-2 bg-emerald-900 text-white rounded-lg text-sm font-bold hover:bg-emerald-950 transition-all shadow-lg shadow-emerald-900/10"
           >
             <Download className="w-4 h-4" />
-            <span>Xuất Excel</span>
+            <span className="hidden sm:inline">Xuất Excel</span>
           </button>
         </div>
       </div>

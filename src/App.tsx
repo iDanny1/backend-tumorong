@@ -308,6 +308,18 @@ export default function App() {
     }
   };
 
+  const deleteCustomer = async (customerId: string) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa khách hàng này?')) return;
+    try {
+      await api.delete(`/api/customers/${customerId}`);
+      setSelectedCustomer(null);
+      fetchCustomers();
+      alert('Đã xóa khách hàng thành công!');
+    } catch (err) {
+      alert('Lỗi khi xóa khách hàng');
+    }
+  };
+
   const trackProductView = async (productId: string) => {
     try {
       const product = products.find(p => p._id === productId);
@@ -437,6 +449,7 @@ export default function App() {
             customer={selectedCustomer} 
             onBack={() => setSelectedCustomer(null)} 
             onUpdate={handleUpdateCustomer}
+            onDelete={deleteCustomer}
           />
         );
       }
@@ -448,6 +461,7 @@ export default function App() {
           initialTab={activeMenu === 'Khách hàng - Mua sỉ' ? 'wholesale' : 'all'}
           onSelectCustomer={setSelectedCustomer}
           onRefresh={fetchCustomers}
+          onDeleteCustomer={deleteCustomer}
         />
       );
     }

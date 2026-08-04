@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Pencil, RotateCcw, Filter, Trash2, Search } from 'lucide-react';
+import { Plus, Pencil, RotateCcw, Filter, Trash2, Search, Download, Upload } from 'lucide-react';
 import { Product } from '../../types';
 
 interface ProductManagementProps {
@@ -20,6 +20,44 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
   onRefresh
 }) => {
   const [localSearch, setLocalSearch] = useState('');
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleExport = async () => {
+    try {
+      const baseUrl = (import.meta as any).env.VITE_API_URL || '';
+      const response = await fetch(`${baseUrl}/api/products/export`);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'products.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (error) {
+      alert('Lỗi khi xuất file Excel');
+    }
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const baseUrl = (import.meta as any).env.VITE_API_URL || '';
+      const response = await fetch(`${baseUrl}/api/products/import`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await response.json();
+      alert(data.message || 'Nhập thành công');
+      if (onRefresh) onRefresh();
+    } catch (error) {
+      alert('Lỗi khi nhập file Excel');
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const filteredProducts = products.filter(product => {
     const searchStr = (searchQuery || localSearch).toLowerCase();
@@ -55,12 +93,33 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
           >
             <RotateCcw className="w-5 h-5" />
           </button>
+          <input 
+            type="file" 
+            accept=".xlsx, .xls" 
+            className="hidden" 
+            ref={fileInputRef}
+            onChange={handleImport}
+          />
+          <button 
+            onClick={handleExport}
+            className="flex items-center gap-2 px-3 py-2 bg-white border border-blue-200 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors shadow-sm"
+          >
+            <Download className="w-4 h-4" />
+            <span className="hidden sm:inline">Xuất Excel</span>
+          </button>
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 px-3 py-2 bg-white border border-blue-200 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors shadow-sm"
+          >
+            <Upload className="w-4 h-4" />
+            <span className="hidden sm:inline">Nhập Excel</span>
+          </button>
           <button 
             onClick={onAddProduct}
             className="flex items-center gap-2 px-4 py-2 bg-emerald-900 text-white rounded-lg text-sm font-bold hover:bg-emerald-950 transition-all shadow-lg shadow-emerald-900/10"
           >
             <Plus className="w-4 h-4" />
-            Thêm sản phẩm
+            <span className="hidden sm:inline">Thêm sản phẩm</span>
           </button>
         </div>
       </div>

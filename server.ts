@@ -1592,6 +1592,38 @@ async function startServer() {
     }
   });
 
+  // ORDERS IMPORT
+  app.post('/api/orders/import', upload.single('file'), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "Không tìm thấy file" });
+      const wb = xlsx.read(req.file.buffer, { type: 'buffer' });
+      const wsname = wb.SheetNames[0];
+      const data: any[] = xlsx.utils.sheet_to_json(wb.Sheets[wsname]);
+      let count = 0;
+      for (const row of data) {
+        if (!row['Khách hàng']) continue;
+        const total = Number(row['Tổng tiền']) || 0;
+        await Order.create({
+          orderId: row['Mã đơn hàng'] || `DH${Date.now()}${count}`,
+          orderCode: row['Mã đơn hàng'] || `DH${Date.now()}${count}`,
+          customerName: row['Khách hàng'],
+          customerPhone: row['SĐT'] || '',
+          address: row['Địa chỉ'] || '',
+          total: total,
+          totalAmount: total,
+          status: row['Trạng thái'] || 'Chờ xác nhận',
+          paymentStatus: 'Chưa thanh toán',
+          products: [],
+          items: []
+        });
+        count++;
+      }
+      res.json({ message: `Nhập thành công ${count} đơn hàng.` });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
   // Catch-all API 404
   app.all('/api/*', (req, res) => {
     res.status(404).json({ error: `Endpoint ${req.method} ${req.url} not found` });
