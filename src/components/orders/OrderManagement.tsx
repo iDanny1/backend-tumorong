@@ -61,6 +61,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({
   const [showSettings, setShowSettings] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState<string>('');
   const [exportStatuses, setExportStatuses] = useState<string[]>([]);
+  const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>({
@@ -329,7 +330,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({
                       <h3 className="text-sm font-semibold text-slate-800">Tùy chọn ngày</h3>
                       <button 
                         onClick={() => {
-                          setSelectedPreset(null);
+                          setSelectedPreset('');
                           setDateRange({ start: '', end: '' });
                         }}
                         className="text-xs text-emerald-700 hover:underline"
@@ -346,7 +347,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({
                           value={dateRange.start}
                           onChange={(e) => {
                             setDateRange(prev => ({ ...prev, start: e.target.value }));
-                            setSelectedPreset(null);
+                            setSelectedPreset('');
                           }}
                           className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                         />
@@ -358,7 +359,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({
                           value={dateRange.end}
                           onChange={(e) => {
                             setDateRange(prev => ({ ...prev, end: e.target.value }));
-                            setSelectedPreset(null);
+                            setSelectedPreset('');
                           }}
                           className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                         />
