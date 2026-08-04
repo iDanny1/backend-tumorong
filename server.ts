@@ -1441,16 +1441,6 @@ async function startServer() {
     }
   });
 
-  app.get('/api/customers/:id', async (req, res) => {
-    try {
-      const doc = await Customer.findById(req.params.id);
-      if (!doc) return res.status(404).json({ message: "Không tìm thấy khách hàng" });
-      res.json(doc);
-    } catch (err) {
-      res.status(500).json({ error: String(err) });
-    }
-  });
-
   app.post('/api/customers', async (req, res) => {
     try {
       const newCustomer = await Customer.create(req.body);
@@ -1460,28 +1450,8 @@ async function startServer() {
     }
   });
 
-  app.put('/api/customers/:id', async (req, res) => {
-    try {
-      const updated = await Customer.findByIdAndUpdate(req.params.id, req.body, { new: true });
-      if (!updated) return res.status(404).json({ message: "Không tìm thấy khách hàng" });
-      res.json(updated);
-    } catch (err) {
-      res.status(500).json({ error: String(err) });
-    }
-  });
-
-  app.delete('/api/customers/:id', async (req, res) => {
-    try {
-      const deleted = await Customer.findByIdAndDelete(req.params.id);
-      if (!deleted) return res.status(404).json({ message: "Không tìm thấy khách hàng" });
-      res.json({ message: "Xóa thành công" });
-    } catch (err) {
-      res.status(500).json({ error: String(err) });
-    }
-  });
-
   // ========================
-  // EXPORT / IMPORT APIS
+  // EXPORT / IMPORT APIS (phải đặt TRƯỚC /:id để tránh xung đột route)
   // ========================
   
   // CUSTOMERS EXPORT
@@ -1624,24 +1594,64 @@ async function startServer() {
     }
   });
 
+  // Customer routes với wildcard /:id (phải đặt SAU /export và /import)
+  app.get('/api/customers/:id', async (req, res) => {
+    try {
+      const doc = await Customer.findById(req.params.id);
+      if (!doc) return res.status(404).json({ message: "Không tìm thấy khách hàng" });
+      res.json(doc);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.put('/api/customers/:id', async (req, res) => {
+    try {
+      const updated = await Customer.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      if (!updated) return res.status(404).json({ message: "Không tìm thấy khách hàng" });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
+  app.delete('/api/customers/:id', async (req, res) => {
+    try {
+      const deleted = await Customer.findByIdAndDelete(req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Không tìm thấy khách hàng" });
+      res.json({ message: "Xóa thành công" });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
   // Catch-all API 404
   app.all('/api/*', (req, res) => {
     res.status(404).json({ error: `Endpoint ${req.method} ${req.url} not found` });
   });
 
   // --- VITE MIDDLEWARE ---
-  if (process.env.NODE_ENV !== 'production') {
+  // Kiểm tra folder dist tồn tại để phân biệt production/dev
+  // (tránh trang trắng khi NODE_ENV=development nhưng đã deploy)
+  const distPath = path.join(__dirname, 'dist');
+  const fs = await import('fs');
+  const isBuilt = fs.existsSync(path.join(distPath, 'index.html'));
+
+  if (isBuilt) {
+    // Production: serve static files từ dist/
+    console.log('📦 Serving production build from dist/');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  } else {
+    // Development: dùng Vite Dev Server
+    console.log('⚡ Starting Vite dev server...');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(__dirname, 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
   }
 
   app.listen(Number(PORT), '0.0.0.0', () => {
