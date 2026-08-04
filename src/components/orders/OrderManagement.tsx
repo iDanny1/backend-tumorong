@@ -12,7 +12,8 @@ import {
   Download,
   Upload,
   Trash2,
-  CreditCard
+  CreditCard,
+  Check
 } from 'lucide-react';
 import { Order } from '../../types';
 import { cn } from '../../lib/utils';
