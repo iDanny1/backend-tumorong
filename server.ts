@@ -1,5 +1,7 @@
 import 'dotenv/config';
 import crypto from 'crypto';
+import spinRouter from './src/routes/spinRoutes.js';
+import advancedVoucherRouter from './src/routes/voucherRoutes.js';
 import express from 'express';
 import mongoose, { Schema, Document, Model } from 'mongoose';
 import path from 'path';
@@ -668,6 +670,16 @@ async function startServer() {
 
   // Health
   app.get('/api/health', (req, res) => res.json({ status: 'ok', db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' }));
+
+  // ========================
+  // 🎰 LUCKY WHEEL — SPIN ROUTES
+  // ========================
+  app.use('/api/spin', spinRouter);
+
+  // ========================
+  // 🏷️ VOUCHER NÂNG CAO v2
+  // ========================
+  app.use('/api/vouchers-v2', advancedVoucherRouter);
 
   // --- PRODUCTS ---
   app.get('/api/products', async (req, res) => {
