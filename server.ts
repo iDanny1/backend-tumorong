@@ -654,7 +654,7 @@ async function startServer() {
       callback(null, isAllowed ? origin : '*');
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'access_token'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'access_token', 'x-zalo-id'],
     credentials: true
   }));
   app.use(express.json({ limit: '10mb' }));
