@@ -2,6 +2,8 @@ import 'dotenv/config';
 import crypto from 'crypto';
 import spinRouter from './src/routes/spinRoutes.js';
 import advancedVoucherRouter from './src/routes/voucherRoutes.js';
+import { AdvancedVoucher } from './src/models/AdvancedVoucher.js';
+import { UserVoucherUsage } from './src/models/UserVoucherUsage.js';
 import express from 'express';
 import mongoose, { Schema, Document, Model } from 'mongoose';
 import path from 'path';
@@ -219,6 +221,30 @@ async function syncOrderInventory(orderDoc: any, newStatus?: string) {
       await Order.findByIdAndUpdate(orderDoc._id, { $set: { stockDeducted: false } });
       orderDoc.stockDeducted = false;
       console.log(`🔄 Đã hoàn trả tồn kho cho đơn hàng bị hủy ${orderDoc.orderCode || orderDoc._id}`);
+    }
+
+    // Restore voucher usage when order is cancelled
+    if (isNowCancelled && orderDoc.voucherCode) {
+      const code = String(orderDoc.voucherCode).trim().toUpperCase();
+      await AdvancedVoucher.findOneAndUpdate(
+        { code, usedCount: { $gt: 0 } },
+        { $inc: { usedCount: -1 } }
+      ).catch(() => {});
+
+      const userId = (orderDoc.customerPhone || orderDoc.customerName || '').trim();
+      if (userId) {
+        await UserVoucherUsage.findOneAndUpdate(
+          { userId, voucherCode: code, usedCount: { $gt: 0 } },
+          { $inc: { usedCount: -1 } }
+        ).catch(() => {});
+      }
+
+      await Voucher.findOneAndUpdate(
+        { code, usedCount: { $gt: 0 } },
+        { $inc: { usedCount: -1 } }
+      ).catch(() => {});
+
+      console.log(`🎟️ Đã hoàn trả lượt sử dụng voucher ${code} cho đơn hàng bị hủy ${orderDoc.orderCode || orderDoc._id}`);
     }
   } catch (err) {
     console.error("❌ Lỗi khi đồng bộ tồn kho đơn hàng:", err);
@@ -828,12 +854,31 @@ async function startServer() {
       console.log(`✅ Đơn hàng Zalo mới: ${orderCode} | _id: ${newOrder._id}`);
       await syncOrderInventory(newOrder, newOrder.status);
 
-      // ── CẬP NHẬT LƯỢT DÙNG VOUCHER ─────────────────────────────────────────
+      // ── CẬP NHẬT LƯỢT DÙNG VOUCHER (ĐỒNG BỘ ADVANCED, LEGACY & USER USAGE) ──
       if (voucherCode) {
-        await Voucher.findOneAndUpdate(
-          { code: voucherCode.toUpperCase() },
+        const code = String(voucherCode).trim().toUpperCase();
+
+        // 1. Cập nhật lượt sử dụng toàn hệ thống trong AdvancedVoucher
+        await AdvancedVoucher.findOneAndUpdate(
+          { code },
           { $inc: { usedCount: 1 } }
-        ).catch(err => console.error("Lỗi update voucher:", err));
+        ).catch(err => console.error("Lỗi update AdvancedVoucher:", err));
+
+        // 2. Cập nhật lượt sử dụng của từng User (UserVoucherUsage)
+        const targetUserId = (req.body.userId || resolvedPhone || '').trim();
+        if (targetUserId) {
+          await UserVoucherUsage.findOneAndUpdate(
+            { userId: targetUserId, voucherCode: code },
+            { $inc: { usedCount: 1 }, $set: { lastUsedAt: new Date() } },
+            { upsert: true, new: true }
+          ).catch(err => console.error("Lỗi update UserVoucherUsage:", err));
+        }
+
+        // 3. Cập nhật legacy Voucher model
+        await Voucher.findOneAndUpdate(
+          { code },
+          { $inc: { usedCount: 1 } }
+        ).catch(err => console.error("Lỗi update legacy Voucher:", err));
       }
 
       // ── TỰ ĐỘNG LƯU / CẬP NHẬT KHÁCH HÀNG ─────────────────────────────────
