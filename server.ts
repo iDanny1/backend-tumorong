@@ -702,6 +702,54 @@ async function startServer() {
   // ========================
   app.use('/api/spin', spinRouter);
 
+  // Ghi nhận thông tin khách hàng từ vòng quay may mắn
+  app.post('/api/spin/register-customer', async (req, res) => {
+    try {
+      const { zaloId, name, phoneToken, accessToken } = req.body;
+      let phone = '';
+
+      // Giải mã SĐT từ Zalo nếu có đủ token
+      if (phoneToken && accessToken && ZALO_SECRET_KEY) {
+        const response = await fetch('https://graph.zalo.me/v2.0/me/info', {
+          headers: { 'access_token': accessToken, 'code': phoneToken, 'secret_key': ZALO_SECRET_KEY }
+        });
+        const data = await response.json();
+        if (data && data.data && data.data.number) {
+          // Xử lý định dạng sđt (ví dụ: 849xxx -> 09xxx)
+          let rawPhone = data.data.number;
+          if (rawPhone.startsWith('84')) {
+            rawPhone = '0' + rawPhone.slice(2);
+          }
+          phone = rawPhone;
+        }
+      }
+
+      if (!phone) {
+        return res.status(400).json({ success: false, message: 'Không thể giải mã số điện thoại.' });
+      }
+
+      // Upsert Customer
+      const existing = await Customer.findOne({ phone });
+      if (existing) {
+        if (name && existing.name !== name) {
+          existing.name = name;
+          await existing.save();
+        }
+      } else {
+        await Customer.create({
+          name: name || 'Khách Vòng Quay',
+          phone,
+          address: '',
+          type: 'retail'
+        });
+      }
+
+      res.json({ success: true, message: 'Đã lưu thông tin khách hàng', data: { phone } });
+    } catch (err) {
+      console.error('[register-customer]', err);
+      res.status(500).json({ success: false, error: String(err) });
+    }
+  });
   // ========================
   // 🏷️ VOUCHER NÂNG CAO v2
   // ========================

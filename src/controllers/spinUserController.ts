@@ -80,7 +80,7 @@ export async function claimOASpin(req: Request, res: Response): Promise<void> {
       // Race condition: đã bị claim bởi request khác cùng lúc
       res.status(409).json({
         success: false,
-        message: 'Bạn đã nhận lượt quay tân thủ rồi',
+        message: 'Bạn đã nhận lượt quay rồi',
       });
       return;
     }
