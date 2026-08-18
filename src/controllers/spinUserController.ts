@@ -60,7 +60,7 @@ export async function claimOASpin(req: Request, res: Response): Promise<void> {
     if (user.hasClaimedOASpin) {
       res.status(409).json({
         success: false,
-        message: 'Bạn đã nhận lượt quay tân thủ rồi',
+        message: 'Bạn đã nhận lượt quay rồi',
         data: {
           spinsLeft: user.spinsLeft,
           hasClaimedOASpin: user.hasClaimedOASpin,
