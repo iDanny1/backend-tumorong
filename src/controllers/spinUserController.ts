@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { SpinUser } from '../models/SpinUser.js';
 
+import { Voucher } from '../models/Voucher.js';
+
 // ================================================
 // GET /api/spin/user-info
 // Lấy thông tin lượt quay của user (tạo mới nếu chưa tồn tại)
@@ -21,12 +23,16 @@ export async function getSpinInfo(req: Request, res: Response): Promise<void> {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
+    const golfCount = await Voucher.countDocuments({ code: { $regex: '^VOUCHER_GOLF' } });
+    const outOfGolf = golfCount >= 25;
+
     res.json({
       success: true,
       data: {
         zaloId: user.zaloId,
         spinsLeft: user.spinsLeft,
         hasClaimedOASpin: user.hasClaimedOASpin,
+        outOfGolf: outOfGolf,
       },
     });
   } catch (err: any) {

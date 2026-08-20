@@ -11,13 +11,13 @@ const PRIZES = [
   { prizeIndex: 0, label: 'Voucher 50K (Đơn từ 200K)', type: 'VOUCHER_50K', discountValue: 50000, minOrderValue: 200000 },
   { prizeIndex: 1, label: '1 Hộp Cà Phê Sâm Ngọc Linh 8 gói', type: 'PRODUCT_CF' },
   { prizeIndex: 2, label: '1 Hộp Trà Ô Long Sâm Ngọc Linh 10 gói', type: 'PRODUCT_TEA' },
-  { prizeIndex: 3, label: '1 Chai Hồng Đẳng Sâm Ngọc Linh', type: 'PRODUCT_HDS' },
+  { prizeIndex: 3, label: 'Voucher Golf Tân Sơn Nhất', type: 'VOUCHER_GOLF' },
   { prizeIndex: 4, label: 'Dầu Gió Nhân Sâm', type: 'PRODUCT_OIL' },
-  { prizeIndex: 5, label: 'Voucher Golf Tân Sơn Nhất', type: 'VOUCHER_GOLF' },
+  { prizeIndex: 5, label: '1 Chai Hồng Đẳng Sâm Ngọc Linh', type: 'PRODUCT_HDS' },
 ];
 
 // Tỉ lệ trúng (weights)
-const WEIGHTS = [30, 20, 20, 10, 10, 10];
+const WEIGHTS = [45, 10, 10, 5, 20, 10];
 
 function pickPrize(): typeof PRIZES[number] {
   const total = WEIGHTS.reduce((a, b) => a + b, 0);
@@ -66,7 +66,19 @@ export async function doSpin(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const prize = pickPrize();
+    let prize = pickPrize();
+    
+    // ==========================================
+    // KIỂM TRA GIỚI HẠN VOUCHER GOLF TỐI ĐA 25 CÁI
+    // ==========================================
+    if (prize.type === 'VOUCHER_GOLF') {
+      const golfCount = await Voucher.countDocuments({ code: { $regex: '^VOUCHER_GOLF' } });
+      if (golfCount >= 25) {
+        // Hết suất, chuyển sang Voucher 50K
+        prize = PRIZES.find(p => p.type === 'VOUCHER_50K') || PRIZES[0];
+      }
+    }
+
     const code  = generateVoucherCode(zaloId);
     let voucherId = '';
 
