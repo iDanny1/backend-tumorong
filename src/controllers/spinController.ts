@@ -17,7 +17,7 @@ const PRIZES = [
 ];
 
 // Tỉ lệ trúng (weights)
-const WEIGHTS = [45, 10, 10, 5, 20, 10];
+const WEIGHTS = [55, 10, 5, 5, 20, 5];
 
 function pickPrize(): typeof PRIZES[number] {
   const total = WEIGHTS.reduce((a, b) => a + b, 0);
