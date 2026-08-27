@@ -99,7 +99,7 @@ export async function doSpin(req: Request, res: Response): Promise<void> {
         code,
         description: `🎰 Vòng Quay May Mắn — ${prize.label} (hạn 3 ngày, dùng tại quầy hoặc Zalo Mini App)`,
         visibility: 'SECRET',
-        discountType: 'FIXED',
+        discountType: 'FIXED_AMOUNT',
         discountValue: prize.discountValue,
         maxDiscountAmount: 0,
         minOrderValue: prize.minOrderValue,
