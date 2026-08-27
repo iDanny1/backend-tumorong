@@ -5,8 +5,12 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 // ========================
 export interface ISpinUser extends Document {
   zaloId: string;
+  name?: string;
+  phone?: string;
+  avatar?: string;
   spinsLeft: number;
   hasClaimedOASpin: boolean;
+  isTestUser?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,12 +26,29 @@ const spinUserSchema = new Schema<ISpinUser>(
       unique: true,
       index: true,
     },
+    name: {
+      type: String,
+      default: '',
+    },
+    phone: {
+      type: String,
+      default: '',
+      index: true,
+    },
+    avatar: {
+      type: String,
+      default: '',
+    },
     spinsLeft: {
       type: Number,
       default: 0,
       min: 0,
     },
     hasClaimedOASpin: {
+      type: Boolean,
+      default: false,
+    },
+    isTestUser: {
       type: Boolean,
       default: false,
     },

@@ -4,6 +4,7 @@ import spinRouter from './src/routes/spinRoutes.js';
 import advancedVoucherRouter from './src/routes/voucherRoutes.js';
 import { AdvancedVoucher } from './src/models/AdvancedVoucher.js';
 import { UserVoucherUsage } from './src/models/UserVoucherUsage.js';
+import { SpinUser } from './src/models/SpinUser.js';
 import express from 'express';
 import mongoose, { Schema, Document, Model } from 'mongoose';
 import path from 'path';
@@ -705,46 +706,87 @@ async function startServer() {
   // Ghi nhận thông tin khách hàng từ vòng quay may mắn
   app.post('/api/spin/register-customer', async (req, res) => {
     try {
-      const { zaloId, name, phoneToken, accessToken } = req.body;
-      let phone = '';
+      const { zaloId, name, phoneToken, accessToken, phone: directPhone } = req.body;
+      let phone = directPhone ? String(directPhone).trim() : '';
 
-      // Giải mã SĐT từ Zalo nếu có đủ token
-      if (phoneToken && accessToken && ZALO_SECRET_KEY) {
+      // Giải mã SĐT từ Zalo nếu có token
+      if (!phone && phoneToken && accessToken && ZALO_SECRET_KEY) {
         const response = await fetch('https://graph.zalo.me/v2.0/me/info', {
           headers: { 'access_token': accessToken, 'code': phoneToken, 'secret_key': ZALO_SECRET_KEY }
         });
         const data = await response.json();
         if (data && data.data && data.data.number) {
-          // Xử lý định dạng sđt (ví dụ: 849xxx -> 09xxx)
-          let rawPhone = data.data.number;
-          if (rawPhone.startsWith('84')) {
-            rawPhone = '0' + rawPhone.slice(2);
-          }
-          phone = rawPhone;
+          phone = String(data.data.number).trim();
         }
       }
 
-      if (!phone) {
-        return res.status(400).json({ success: false, message: 'Không thể giải mã số điện thoại.' });
+      // Chuẩn hóa định dạng SĐT (84xxx -> 0xxx)
+      if (phone.startsWith('84')) {
+        phone = '0' + phone.slice(2);
+      } else if (phone.startsWith('+84')) {
+        phone = '0' + phone.slice(3);
+      }
+      phone = phone.replace(/[^0-9]/g, '');
+
+      if (!phone || phone.length < 9) {
+        return res.status(400).json({ success: false, message: 'Không thể xác định số điện thoại hợp lệ.' });
       }
 
-      // Upsert Customer
-      const existing = await Customer.findOne({ phone });
-      if (existing) {
-        if (name && existing.name !== name) {
-          existing.name = name;
-          await existing.save();
+      const customerName = name?.trim() || 'Khách Vòng Quay';
+      const testPhones = (process.env.TEST_PHONES || '0974543740').split(',').map(p => p.trim());
+      const isTest = testPhones.includes(phone) || (zaloId && zaloId.startsWith('dev_'));
+
+      // 1. Upsert vào bảng Customer (Hiển thị ngay trong mục Khách Hàng của Admin)
+      let customer = await Customer.findOne({ phone });
+      if (customer) {
+        if (name && customer.name === 'Khách Vòng Quay') {
+          customer.name = customerName;
         }
+        if (!customer.tags) customer.tags = [];
+        if (!customer.tags.includes('Vòng quay may mắn')) {
+          customer.tags.push('Vòng quay may mắn');
+        }
+        customer.lastAccess = new Date().toISOString();
+        await customer.save();
       } else {
-        await Customer.create({
-          name: name || 'Khách Vòng Quay',
+        customer = await Customer.create({
+          name: customerName,
           phone,
           address: '',
-          type: 'retail'
+          type: 'retail',
+          tags: ['Vòng quay may mắn'],
+          lastAccess: new Date().toISOString(),
+          createdAt: new Date().toISOString()
         });
       }
 
-      res.json({ success: true, message: 'Đã lưu thông tin khách hàng', data: { phone } });
+      // 2. Cập nhật vào SpinUser để liên kết Zalo ID với SĐT & Tên
+      if (zaloId) {
+        await SpinUser.findOneAndUpdate(
+          { zaloId },
+          {
+            $set: {
+              phone,
+              name: customerName,
+              isTestUser: isTest,
+              ...(isTest ? { spinsLeft: 999 } : {})
+            }
+          },
+          { upsert: true }
+        );
+      }
+
+      console.log(`[Spin Customer] Đã lưu khách hàng quay voucher: ${customerName} (${phone}) - Test: ${isTest}`);
+
+      res.json({
+        success: true,
+        message: 'Đã lưu thông tin khách hàng thành công',
+        data: {
+          phone,
+          name: customer.name,
+          isTestUser: isTest
+        }
+      });
     } catch (err) {
       console.error('[register-customer]', err);
       res.status(500).json({ success: false, error: String(err) });

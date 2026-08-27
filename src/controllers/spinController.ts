@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { SpinUser } from '../models/SpinUser.js';
 import { Voucher } from '../models/Voucher.js';
 import { AdvancedVoucher } from '../models/AdvancedVoucher.js';
+import { isTestSpinUser } from './spinUserController.js';
 
 // ================================================
 // Danh sách phần thưởng trên vòng quay (6 ô)
@@ -46,14 +47,26 @@ export async function doSpin(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const user = await SpinUser.findOneAndUpdate(
+    let existing = await SpinUser.findOne({ zaloId });
+    const isTest = isTestSpinUser(existing, zaloId);
+
+    if (isTest) {
+      if (!existing) {
+        existing = await SpinUser.create({ zaloId, spinsLeft: 999, hasClaimedOASpin: true, isTestUser: true });
+      } else if (existing.spinsLeft < 10) {
+        existing.spinsLeft = 999;
+        existing.isTestUser = true;
+        await existing.save();
+      }
+    }
+
+    let user = await SpinUser.findOneAndUpdate(
       { zaloId, spinsLeft: { $gt: 0 } },
-      { $inc: { spinsLeft: -1 } },
+      { $inc: { spinsLeft: isTest ? 0 : -1 } },
       { new: true }
     );
 
     if (!user) {
-      const existing = await SpinUser.findOne({ zaloId });
       if (!existing) {
         res.status(404).json({ success: false, message: 'Tài khoản không tồn tại' });
       } else {
@@ -141,7 +154,8 @@ export async function doSpin(req: Request, res: Response): Promise<void> {
           discountAmount: prize.discountValue || 0,
           isUsed: false,
         },
-        spinsLeft: user.spinsLeft,
+        spinsLeft: isTest ? 999 : user.spinsLeft,
+        isTestUser: isTest,
       },
     });
   } catch (err: any) {
