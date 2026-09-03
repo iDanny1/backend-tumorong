@@ -734,7 +734,7 @@ async function startServer() {
 
       const customerName = name?.trim() || 'Khách Vòng Quay';
       const testPhones = (process.env.TEST_PHONES || '0974543740').split(',').map(p => p.trim());
-      const isTest = testPhones.includes(phone) || (zaloId && zaloId.startsWith('dev_'));
+      const isTest = testPhones.includes(phone);
 
       // 1. Upsert vào bảng Customer (Hiển thị ngay trong mục Khách Hàng của Admin)
       let customer = await Customer.findOne({ phone });

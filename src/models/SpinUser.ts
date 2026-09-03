@@ -8,8 +8,15 @@ export interface ISpinUser extends Document {
   name?: string;
   phone?: string;
   avatar?: string;
+  quizQuestionId?: string;
+  quizStatus?: 'none' | 'pending' | 'passed' | 'failed';
+  quizAnsweredAt?: Date;
   spinsLeft: number;
-  hasClaimedOASpin: boolean;
+  hasSpun?: boolean;
+  voucherCode?: string;
+  prizeLabel?: string;
+  prizeIndex?: number;
+  hasClaimedOASpin?: boolean;
   isTestUser?: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -39,10 +46,38 @@ const spinUserSchema = new Schema<ISpinUser>(
       type: String,
       default: '',
     },
+    quizQuestionId: {
+      type: String,
+      default: '',
+    },
+    quizStatus: {
+      type: String,
+      enum: ['none', 'pending', 'passed', 'failed'],
+      default: 'none',
+    },
+    quizAnsweredAt: {
+      type: Date,
+    },
     spinsLeft: {
       type: Number,
       default: 0,
       min: 0,
+    },
+    hasSpun: {
+      type: Boolean,
+      default: false,
+    },
+    voucherCode: {
+      type: String,
+      default: '',
+    },
+    prizeLabel: {
+      type: String,
+      default: '',
+    },
+    prizeIndex: {
+      type: Number,
+      default: -1,
     },
     hasClaimedOASpin: {
       type: Boolean,
