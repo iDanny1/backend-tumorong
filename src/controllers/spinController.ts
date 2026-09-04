@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
+import mongoose from 'mongoose';
 import { SpinUser } from '../models/SpinUser.js';
 import { Voucher } from '../models/Voucher.js';
 import { AdvancedVoucher } from '../models/AdvancedVoucher.js';
@@ -9,17 +10,24 @@ import { isTestSpinUser, normalizePhone } from './spinUserController.js';
 // Danh sách phần thưởng trên vòng quay (6 ô)
 // ================================================
 export const PRIZES = [
-  { prizeIndex: 0, label: 'Voucher 50K (Đơn từ 100K)', type: 'VOUCHER_50K', discountValue: 50000, minOrderValue: 100000 },
-  { prizeIndex: 1, label: '1 Hộp Cà Phê Sâm Ngọc Linh', type: 'PRODUCT_CF', discountValue: 0, minOrderValue: 0 },
-  { prizeIndex: 2, label: '1 Hộp Trà Ô Long Sâm Ngọc Linh', type: 'PRODUCT_TEA', discountValue: 0, minOrderValue: 0 },
-  { prizeIndex: 3, label: 'Voucher Golf Tân Sơn Nhất', type: 'VOUCHER_GOLF', discountValue: 0, minOrderValue: 0 },
-  { prizeIndex: 4, label: '1 Chai Dầu Gió Nhân Sâm', type: 'PRODUCT_OIL', discountValue: 0, minOrderValue: 0 },
-  { prizeIndex: 5, label: '1 Chai Nước Hồng Đẳng Sâm', type: 'PRODUCT_HDS', discountValue: 0, minOrderValue: 0 },
+  { prizeIndex: 0, label: 'Voucher 50K (Đơn từ 100K)', type: 'VOUCHER_50K', isProduct: false, discountValue: 50000, minOrderValue: 100000 },
+  { prizeIndex: 1, label: '1 Hộp Cà Phê Sâm Ngọc Linh',       type: 'PRODUCT_CF',   isProduct: true,  discountValue: 0, minOrderValue: 0 },
+  { prizeIndex: 2, label: '1 Hộp Trà Ô Long Sâm Ngọc Linh',   type: 'PRODUCT_TEA',  isProduct: true,  discountValue: 0, minOrderValue: 0 },
+  { prizeIndex: 3, label: 'Voucher Golf Tân Sơn Nhất',          type: 'VOUCHER_GOLF', isProduct: false, discountValue: 0, minOrderValue: 0 },
+  { prizeIndex: 4, label: '1 Chai Dầu Gió Nhân Sâm',           type: 'PRODUCT_OIL',  isProduct: true,  discountValue: 0, minOrderValue: 0 },
+  { prizeIndex: 5, label: '1 Chai Nước Hồng Đẳng Sâm',         type: 'PRODUCT_HDS',  isProduct: true,  discountValue: 0, minOrderValue: 0 },
 ];
 
-// Tỉ lệ trúng thưởng (%)
-const WEIGHTS = [50, 12, 10, 5, 15, 8];
+// Ngưỡng tổng chi tiêu tối thiểu để được NHẬN quà vật phẩm (sau khi đã quay trúng)
+const PRODUCT_PRIZE_MIN_SPENT = 200_000;
 
+// Tỉ lệ trúng thưởng (%) — áp dụng như nhau cho mọi người
+//  [Voucher50K | CF | Tea | Golf | Dầu Gió | HĐS]
+const WEIGHTS = [50, 10, 10, 5, 15, 10];
+
+/**
+ * Chọn giải thưởng ngẫu nhiên theo trọng số — giống nhau cho mọi user
+ */
 function pickPrize(): typeof PRIZES[number] {
   const total = WEIGHTS.reduce((a, b) => a + b, 0);
   let rand = Math.random() * total;
@@ -27,7 +35,21 @@ function pickPrize(): typeof PRIZES[number] {
     rand -= WEIGHTS[i];
     if (rand <= 0) return PRIZES[i];
   }
-  return PRIZES[0];
+  return PRIZES[WEIGHTS.findIndex(w => w > 0)] ?? PRIZES[0];
+}
+
+/**
+ * Lấy tổng chi tiêu của user từ collection Customer theo số điện thoại
+ */
+async function getCustomerTotalSpent(phone: string): Promise<number> {
+  try {
+    const CustomerModel = mongoose.models['Customer']
+      ?? mongoose.model('Customer', new mongoose.Schema({}, { strict: false }));
+    const customer = await (CustomerModel as any).findOne({ phone }).select('totalSpent').lean();
+    return Number((customer as any)?.totalSpent ?? 0);
+  } catch {
+    return 0;
+  }
 }
 
 function generateVoucherCode(prefix: string = 'LUCKY'): string {
@@ -102,12 +124,20 @@ export async function doSpin(req: Request, res: Response): Promise<void> {
       }
     }
 
+    // ── Kiểm tra điều kiện nhận quà vật phẩm ──────────────────────────────
+    // Test user luôn được nhận full pool để kiểm tra giao diện
+    let isEligibleForProduct = isTest;
+    if (!isTest && user.phone) {
+      const totalSpent = await getCustomerTotalSpent(user.phone);
+      isEligibleForProduct = totalSpent >= PRODUCT_PRIZE_MIN_SPENT;
+    }
+
     // Trừ lượt quay ngay lập tức (Atomic update)
     if (!isTest) {
       user.spinsLeft = Math.max(0, user.spinsLeft - 1);
     }
 
-    // Chọn giải thưởng
+    // Chọn giải thưởng — pool giống nhau cho mọi người
     let prize = pickPrize();
 
     // Giới hạn giải Golf Tân Sơn Nhất tối đa 25 suất
@@ -177,6 +207,8 @@ export async function doSpin(req: Request, res: Response): Promise<void> {
         prizeIndex: prize.prizeIndex,
         prizeLabel: prize.label,
         prizeType: prize.type,
+        isProduct: prize.isProduct,
+        isEligibleForProduct,
         voucher: {
           id: voucherId,
           code: code,

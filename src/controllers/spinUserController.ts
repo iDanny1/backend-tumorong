@@ -47,6 +47,20 @@ export function isTestSpinUser(user?: any, phoneOrZaloId?: string): boolean {
 // GET /api/spin/user-info
 // Lấy trạng thái hiện tại của người chơi
 // ================================================
+
+const PRODUCT_PRIZE_MIN_SPENT = 200_000;
+
+async function getCustomerTotalSpent(phone: string): Promise<number> {
+  try {
+    const CustomerModel = mongoose.models['Customer']
+      ?? mongoose.model('Customer', new mongoose.Schema({}, { strict: false }));
+    const customer = await (CustomerModel as any).findOne({ phone }).select('totalSpent').lean();
+    return Number((customer as any)?.totalSpent ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
 export async function getSpinInfo(req: Request, res: Response): Promise<void> {
   try {
     const zaloId = (req.headers['x-zalo-id'] as string)?.trim();
@@ -70,6 +84,11 @@ export async function getSpinInfo(req: Request, res: Response): Promise<void> {
     const golfCount = await Voucher.countDocuments({ code: { $regex: '^VOUCHER_GOLF' } });
     const outOfGolf = golfCount >= 25;
 
+    // Kiểm tra điều kiện nhận quà vật phẩm
+    const phone = user?.phone || queryPhone || '';
+    const totalSpent = (!isTest && phone) ? await getCustomerTotalSpent(phone) : 0;
+    const isEligibleForProduct = isTest || totalSpent >= PRODUCT_PRIZE_MIN_SPENT;
+
     if (!user) {
       res.json({
         success: true,
@@ -83,6 +102,8 @@ export async function getSpinInfo(req: Request, res: Response): Promise<void> {
           hasSpun: false,
           outOfGolf,
           isTestUser: isTest,
+          isEligibleForProduct,
+          totalSpent: 0,
         },
       });
       return;
@@ -103,6 +124,8 @@ export async function getSpinInfo(req: Request, res: Response): Promise<void> {
         prizeIndex: user.prizeIndex ?? -1,
         outOfGolf,
         isTestUser: isTest,
+        isEligibleForProduct,
+        totalSpent,
       },
     });
   } catch (err: any) {
