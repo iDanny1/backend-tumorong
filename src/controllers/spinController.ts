@@ -150,7 +150,8 @@ export async function doSpin(req: Request, res: Response): Promise<void> {
 
     const code = generateVoucherCode(prize.type === 'VOUCHER_GOLF' ? 'GOLF' : 'LUCKY');
     const now = new Date();
-    const expiry = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 ngày
+    // Hiệu lực đến hết 23:59:59 ngày 30/09/2026 (GMT+7)
+    const expiry = new Date('2026-09-30T23:59:59.999+07:00');
 
     let voucherId = '';
 
@@ -162,7 +163,7 @@ export async function doSpin(req: Request, res: Response): Promise<void> {
       // 1. Tạo trong AdvancedVoucher (Dùng cho Giỏ hàng Mini App)
       const adv = await AdvancedVoucher.create({
         code,
-        description: `🎰 Vòng Quay May Mắn — ${prize.label} (hạn 30 ngày)`,
+        description: `🎰 Vòng Quay May Mắn — ${prize.label} (HSD: 30/09/2026)`,
         visibility: 'SECRET',
         discountType: 'FIXED_AMOUNT',
         discountValue: prize.discountValue,
