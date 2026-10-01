@@ -1,11 +1,6 @@
 import { Router } from 'express';
-import {
-  getSpinInfo,
-  registerParticipant,
-  getQuiz,
-  submitQuiz,
-  claimOASpin,
-} from '../controllers/spinUserController.js';
+import { getSpinInfo, registerParticipant, claimOASpin } from '../controllers/spinUserController.js';
+import { getDailyQuiz, submitQuiz, adminUpsertQuiz, adminDeleteQuiz } from '../controllers/quizController.js';
 import { doSpin, getMyVouchers } from '../controllers/spinController.js';
 
 const spinRouter = Router();
@@ -24,7 +19,7 @@ spinRouter.post('/register-customer', registerParticipant);
 
 // Bước 2: Lấy 1 câu hỏi Lịch sử ngẫu nhiên
 // GET /api/spin/get-quiz
-spinRouter.get('/get-quiz', getQuiz);
+spinRouter.get('/get-quiz', getDailyQuiz);
 
 // Bước 2: Nộp câu trả lời câu hỏi Lịch sử (kiểm tra đúng/sai và cấp lượt quay)
 // POST /api/spin/submit-quiz
@@ -40,5 +35,8 @@ spinRouter.get('/my-vouchers', getMyVouchers);
 
 // Fallback tương thích cũ
 spinRouter.post('/claim-oa-spin', claimOASpin);
+// ADMIN: CRUD quiz questions
+spinRouter.post('/admin/quiz', adminUpsertQuiz);
+spinRouter.delete('/admin/quiz/:day', adminDeleteQuiz);
 
 export default spinRouter;

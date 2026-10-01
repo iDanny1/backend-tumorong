@@ -6,8 +6,10 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 export interface IVoucher extends Document {
   code: string;
   discountAmount: number;
-  userId: string;       // ref SpinUser.zaloId
+  userId: string;       // ref SpinUser.zaloId hoặc phone
+  prizeLabel: string;   // tên giải thưởng
   isUsed: boolean;
+  expiresAt: Date;      // hạn sử dụng
   createdAt: Date;
 }
 
@@ -33,9 +35,17 @@ const voucherSchema = new Schema<IVoucher>(
       required: true,
       index: true,
     },
+    prizeLabel: {
+      type: String,
+      default: '',
+    },
     isUsed: {
       type: Boolean,
       default: false,
+    },
+    expiresAt: {
+      type: Date,
+      default: () => new Date('2026-09-30T23:59:59.999+07:00'),
     },
   },
   {
@@ -51,3 +61,4 @@ const voucherSchema = new Schema<IVoucher>(
 export const Voucher: Model<IVoucher> =
   (mongoose.models.SpinVoucher as Model<IVoucher>) ||
   mongoose.model<IVoucher>('SpinVoucher', voucherSchema);
+

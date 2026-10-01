@@ -8,7 +8,11 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:stock-issue": "tsx --test scripts/stockIssue.test.ts",
+    "demo:stock-issue": "tsx scripts/previewStockIssue.ts",
+    "appsheet:setup": "tsx scripts/setupAppSheet.ts",
+    "test:appsheet": "tsx --test scripts/appSheetBridge.test.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

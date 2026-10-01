@@ -2,6 +2,8 @@ import 'dotenv/config';
 import crypto from 'crypto';
 import spinRouter from './src/routes/spinRoutes.js';
 import advancedVoucherRouter from './src/routes/voucherRoutes.js';
+import stockIssueRouter, { StockIssue } from './src/routes/stockIssueRoutes.js';
+import { startAppSheetSync, appSheetSyncStatus } from './src/services/appSheetSync.js';
 import { AdvancedVoucher } from './src/models/AdvancedVoucher.js';
 import { UserVoucherUsage } from './src/models/UserVoucherUsage.js';
 import { SpinUser } from './src/models/SpinUser.js';
@@ -796,6 +798,7 @@ async function startServer() {
   // 🏷️ VOUCHER NÂNG CAO v2
   // ========================
   app.use('/api/vouchers-v2', advancedVoucherRouter);
+  app.use('/api/stock-issues', stockIssueRouter);
 
   // --- PRODUCTS ---
   app.get('/api/products', async (req, res) => {
@@ -1609,7 +1612,7 @@ async function startServer() {
         ID: c._id.toString(),
         Tên: c.name || '',
         'Số điện thoại': c.phone || '',
-        'Địa chỉ': c.address || '',
+        'Địa chỉ khách hàng': c.address || '',
         'Email': c.email || '',
         'Loại khách': c.type === 'wholesale' ? 'Sỉ' : 'Lẻ',
         'Tổng đơn': c.ordersCount || 0,
@@ -1643,7 +1646,7 @@ async function startServer() {
           await Customer.create({
             name: row['Tên'] || 'Khách Mới',
             phone: phone,
-            address: row['Địa chỉ'] || '',
+            address: row['Địa chỉ khách hàng'] || row['Địa chỉ'] || '',
             email: row['Email'] || '',
             type: row['Loại khách'] === 'Sỉ' ? 'wholesale' : 'retail',
             ordersCount: Number(row['Tổng đơn']) || 0,
@@ -1754,6 +1757,10 @@ async function startServer() {
 
   app.put('/api/customers/:id', async (req, res) => {
     try {
+      if (req.body.address !== undefined && (typeof req.body.address !== 'string' || req.body.address.length > 1000)) {
+        return res.status(400).json({ message: 'Địa chỉ khách hàng phải là văn bản, tối đa 1.000 ký tự.' });
+      }
+      if (typeof req.body.address === 'string') req.body.address = req.body.address.trim();
       const updated = await Customer.findByIdAndUpdate(req.params.id, req.body, { new: true });
       if (!updated) return res.status(404).json({ message: "Không tìm thấy khách hàng" });
       res.json(updated);
@@ -1773,6 +1780,10 @@ async function startServer() {
   });
 
   // Catch-all API 404
+  app.get('/api/integrations/appsheet/status', (_req, res) => res.json(appSheetSyncStatus()));
+
+  startAppSheetSync(Customer, StockIssue);
+
   app.all('/api/*', (req, res) => {
     res.status(404).json({ error: `Endpoint ${req.method} ${req.url} not found` });
   });

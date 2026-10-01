@@ -83,7 +83,8 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
   const filteredCustomers = customers.filter(customer => {
     const matchesTab = activeTab === 'all' || customer.type === 'wholesale';
     const matchesSearch = customer.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         customer.phone.includes(searchQuery);
+                         customer.phone.includes(searchQuery) ||
+                         (customer.address || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesTab && matchesSearch;
   });
 
@@ -167,6 +168,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                   <input type="checkbox" className="rounded border-slate-300 text-green-600 focus:ring-green-500" />
                 </th>
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Khách hàng</th>
+                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider min-w-[240px]">Địa chỉ khách hàng</th>
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-center">Liên hệ</th>
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-center">Số đơn đã đặt</th>
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-center">Số tiền đã chi</th>
@@ -213,6 +215,9 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
                         <div className="text-xs text-slate-500">{customer.phone}</div>
                       </div>
                     </div>
+                  </td>
+                  <td className="px-4 py-4 text-sm text-slate-600 max-w-[320px] break-words">
+                    {customer.address || <span className="text-slate-400 italic">Chưa có địa chỉ</span>}
                   </td>
                   <td className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
                     <button className="p-2 hover:bg-emerald-50 rounded-full text-emerald-700 transition-colors">

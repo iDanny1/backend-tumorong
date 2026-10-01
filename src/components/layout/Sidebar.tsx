@@ -60,7 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { label: 'Danh mục', value: 'Quản lý sản phẩm - Danh mục' }
       ]
     },
-    { icon: Store, label: 'Bán tại cửa hàng', roles: ['admin', 'sales'] },
+    { icon: Store, label: 'Bán tại cửa hàng', roles: ['admin', 'sales', 'warehouse'] },
     { 
       icon: Users, 
       label: 'Khách hàng',

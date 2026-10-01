@@ -187,7 +187,9 @@ export async function doSpin(req: Request, res: Response): Promise<void> {
         code,
         discountAmount: prize.discountValue || 0,
         userId: user.zaloId || user.phone || 'spin_user',
+        prizeLabel: prize.label,
         isUsed: false,
+        expiresAt: expiry,
       });
       if (!voucherId && legacy) voucherId = (legacy as any)._id?.toString() || '';
     } catch (legErr) {
@@ -242,18 +244,39 @@ export async function getMyVouchers(req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const vouchers = await Voucher.find({
-      $or: [
-        ...(zaloId ? [{ userId: zaloId }] : []),
-        ...(queryPhone ? [{ userId: queryPhone }] : []),
-        { code: { $regex: '^LUCKY' } },
-        { code: { $regex: '^GOLF' } },
-      ],
-    })
-      .sort({ createdAt: -1 })
-      .limit(10);
+    // Tìm SpinUser để lấy cả zaloId lẫn phone, đảm bảo query chính xác
+    let userIds: string[] = [];
+    if (zaloId) userIds.push(zaloId);
+    if (queryPhone) userIds.push(queryPhone);
 
-    res.json({ success: true, data: vouchers });
+    // Tìm thêm userId từ SpinUser nếu chỉ có một trong hai
+    try {
+      const spinUser = await SpinUser.findOne({
+        $or: [
+          ...(zaloId ? [{ zaloId }] : []),
+          ...(queryPhone ? [{ phone: queryPhone }] : []),
+        ],
+      }).lean();
+      if (spinUser) {
+        if (spinUser.zaloId && !userIds.includes(spinUser.zaloId)) userIds.push(spinUser.zaloId);
+        if (spinUser.phone && !userIds.includes(spinUser.phone)) userIds.push(spinUser.phone);
+      }
+    } catch (_) {}
+
+    const vouchers = await Voucher.find({ userId: { $in: userIds } })
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .select('code discountAmount prizeLabel isUsed expiresAt createdAt')
+      .lean();
+
+    // Đánh dấu voucher đã hết hạn
+    const now = new Date();
+    const result = vouchers.map((v: any) => ({
+      ...v,
+      isExpired: v.expiresAt ? v.expiresAt < now : false,
+    }));
+
+    res.json({ success: true, data: result });
   } catch (err: any) {
     console.error('[getMyVouchers]', err);
     res.status(500).json({ success: false, message: 'Lỗi khi tải danh sách voucher' });

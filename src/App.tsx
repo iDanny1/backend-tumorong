@@ -27,6 +27,7 @@ import { Login } from './components/auth/Login';
 import { CustomerUI } from './components/CustomerUI';
 import { Order, User, Category, Product, Customer } from './types';
 import { api } from './lib/api';
+import { StockIssueManagement } from './components/stock-issues/StockIssueManagement';
 
 export default function App() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -349,6 +350,9 @@ export default function App() {
   };
 
   const renderContent = () => {
+    if (activeMenu === 'Bán tại cửa hàng' && user) {
+      return <StockIssueManagement key={user.username} products={products} customers={customers} user={user} />;
+    }
     if (activeMenu === 'Đơn hàng') {
       if (selectedOrder) {
         return (

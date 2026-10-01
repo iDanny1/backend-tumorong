@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Customer } from '../../types';
 import { cn } from '../../lib/utils';
+import { api } from '../../lib/api';
 
 interface CustomerDetailProps {
   customer: Customer;
@@ -28,19 +29,30 @@ interface CustomerDetailProps {
 
 export const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpdate, onDelete }) => {
   const [isWholesale, setIsWholesale] = useState(customer.type === 'wholesale');
+  const [address, setAddress] = useState(customer.address || '');
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  React.useEffect(() => { setAddress(customer.address || ''); }, [customer._id, customer.address]);
 
   // Sync local state when customer prop changes
   React.useEffect(() => {
     setIsWholesale(customer.type === 'wholesale');
   }, [customer.type]);
 
-  const toggleWholesale = () => {
+  const updateProfile = async (changes: Partial<Customer>) => {
+    setSaving(true); setError(''); setMessage('');
+    try {
+      const updated = await api.put(`/api/customers/${customer._id}`, changes);
+      onUpdate(updated);
+      setMessage('Đã lưu thông tin khách hàng.');
+    } catch {
+      setError('Chưa lưu được thông tin. Vui lòng thử lại; nội dung bạn nhập vẫn được giữ.');
+    } finally { setSaving(false); }
+  };
+  const toggleWholesale = async () => {
     const newType = !isWholesale ? 'wholesale' : 'retail';
-    setIsWholesale(!isWholesale);
-    onUpdate({
-      ...customer,
-      type: newType
-    });
+    await updateProfile({ type: newType });
   };
 
   return (
@@ -96,10 +108,14 @@ export const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack
                     <Mail className="w-4 h-4" />
                     <span>-</span>
                   </div>
-                  <div className="flex items-center gap-3 text-sm text-slate-400">
-                    <MapPin className="w-4 h-4" />
-                    <span>-</span>
-                  </div>
+                  <form onSubmit={event => { event.preventDefault(); void updateProfile({ address: address.trim() }); }} className="space-y-2">
+                    <label htmlFor="customer-address" className="flex items-center gap-2 text-sm font-medium text-slate-700"><MapPin className="w-4 h-4" />Địa chỉ khách hàng</label>
+                    <textarea id="customer-address" value={address} maxLength={1000} disabled={saving} onChange={event => { setAddress(event.target.value); setMessage(''); }} placeholder="Số nhà, đường, phường/xã, tỉnh/thành" rows={3} className="w-full p-3 border border-slate-300 rounded-lg text-sm text-slate-800" />
+                    <button type="submit" disabled={saving || address.trim() === (customer.address || '')} className="px-4 py-2 rounded-lg bg-emerald-800 text-white font-medium text-sm disabled:opacity-50">{saving ? 'Đang lưu…' : 'Lưu địa chỉ'}</button>
+                    <p className="text-xs text-slate-500">Địa chỉ này được điền sẵn khi chọn khách để lập phiếu xuất kho.</p>
+                  </form>
+                  {message && <p role="status" className="text-sm text-emerald-700">{message}</p>}
+                  {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
                 </div>
               </div>
             </div>
@@ -138,6 +154,7 @@ export const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack
                 <span className="text-sm font-medium text-slate-700">Cập nhật khách sỉ:</span>
                 <button 
                   onClick={toggleWholesale}
+                  disabled={saving}
                   className={cn(
                     "w-10 h-5 rounded-full relative transition-all duration-200 outline-none",
                     isWholesale ? "bg-blue-600" : "bg-slate-300"
