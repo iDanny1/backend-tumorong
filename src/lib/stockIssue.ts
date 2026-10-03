@@ -6,6 +6,9 @@ export interface StockIssueLine {
   requested: number;
   quantity: number;
   unitPrice: number;
+  vatRate?: number;
+  discount?: number;
+  discountType?: "amount" | "percent";
 }
 
 export interface StockIssueData {
@@ -29,7 +32,12 @@ export interface StockIssueData {
   keeper: string;
   accountant: string;
   director: string;
-  vatRate: number;
+  vatRate: number; // Legacy fallback only. New forms require a rate on each line.
+  pricingVersion?: 2;
+  hideVat?: boolean;
+  hideDiscount?: boolean;
+  billDiscount?: number;
+  billDiscountType?: "amount" | "percent";
   items: StockIssueLine[];
 }
 
@@ -42,6 +50,10 @@ export interface SavedStockIssue extends StockIssueData {
 
 export const COMPANY_NAME = 'CÔNG TY CỔ PHẦN RƯỢU SÂM VIỆT NAM ATUAGIN';
 export const COMPANY_ADDRESS = 'Tòa nhà Bitexco, Số 02, Đường Hải Triều, Phường Sài Gòn, TP. Hồ Chí Minh';
+export const STOCK_ISSUE_COMPANIES = [
+  { name: COMPANY_NAME, address: COMPANY_ADDRESS },
+  { name: 'CÔNG TY CỔ PHẦN SÂM NGỌC LINH TU MƠ RÔNG KON TUM', address: 'Làng Ko Xía 2, Xã Măng Ri, Tỉnh Quảng Ngãi, Việt Nam' },
+] as const;
 
 export function localDate() {
   const now = new Date();
@@ -63,6 +75,40 @@ export function stockIssueTotals(items: StockIssueLine[], vatRate: number) {
   const subtotal = lines.reduce((sum, value) => sum + value, 0);
   const vat = Math.round(subtotal * vatRate / 100);
   return { lines, subtotal, vat, total: subtotal + vat };
+}
+
+export function upgradeStockIssue(data: StockIssueData): StockIssueData {
+  return { ...data, pricingVersion: 2, hideVat: data.hideVat ?? false, hideDiscount: data.hideDiscount ?? false, billDiscount: data.billDiscount ?? 0, billDiscountType: data.billDiscountType ?? 'amount',
+    items: data.items.map(item => ({ ...item, vatRate: item.vatRate ?? data.vatRate, discount: item.discount ?? 0, discountType: item.discountType ?? 'amount' })) };
+}
+
+// Discounts are commercial discounts before VAT. Allocate whole VND with the
+// largest remainder method; the allocation always adds up to the bill discount.
+export function stockIssuePricing(data: StockIssueData) {
+  const gross = data.items.map(item => Math.round(item.quantity * item.unitPrice));
+  const discounts = data.items.map((item, i) => Math.round(item.discountType === 'percent' ? gross[i] * (item.discount ?? 0) / 100 : (item.discount ?? 0)));
+  const net = gross.map((value, i) => Math.max(0, value - discounts[i]));
+  const netTotal = net.reduce((a, b) => a + b, 0);
+  const billDiscount = Math.round(data.billDiscountType === 'percent' ? netTotal * (data.billDiscount ?? 0) / 100 : (data.billDiscount ?? 0));
+  const shares = net.map(value => netTotal ? billDiscount * value / netTotal : 0);
+  const allocated = shares.map(Math.floor);
+  const remainder = billDiscount - allocated.reduce((a, b) => a + b, 0);
+  shares.map((value, i) => ({ i, fraction: value - allocated[i] })).sort((a, b) => b.fraction - a.fraction || a.i - b.i).slice(0, Math.max(0, remainder)).forEach(({ i }) => allocated[i]++);
+  const taxable = net.map((value, i) => Math.max(0, value - allocated[i]));
+  const rates = data.items.map(item => item.vatRate ?? data.vatRate);
+  const lineVat = taxable.map((value, i) => Math.round(value * rates[i] / 100));
+  const subtotal = gross.reduce((a, b) => a + b, 0);
+  const productDiscount = discounts.reduce((a, b) => a + b, 0);
+  const vat = lineVat.reduce((a, b) => a + b, 0);
+  const total = taxable.reduce((a, b) => a + b, 0) + vat;
+  const taxGroups = [...new Set(rates)].sort((a,b) => a-b).map(rate => ({ rate,
+    taxable: taxable.reduce((sum, value, i) => sum + (rates[i] === rate ? value : 0), 0),
+    vat: lineVat.reduce((sum, value, i) => sum + (rates[i] === rate ? value : 0), 0) }));
+  return { lines: gross, subtotal, discounts, productDiscount, billDiscount, allocated, taxable, lineVat, vat, total, taxGroups };
+}
+
+export function stockIssueAmounts(data: StockIssueData) {
+  return data.pricingVersion === 2 ? stockIssuePricing(data) : stockIssueTotals(data.items, data.vatRate);
 }
 
 export const money = (value: number) => value.toLocaleString('vi-VN');
@@ -113,6 +159,22 @@ export function normalizeStockIssue(raw: unknown): StockIssueData {
     return value;
   };
   const vatRate = numeric(input.vatRate, 'Thuế VAT (%)', 100);
+  if (input.pricingVersion !== undefined && input.pricingVersion !== 2) throw new Error('Phiên bản phiếu không hợp lệ.');
+  const modern = input.pricingVersion === 2;
+  const display: Pick<StockIssueData, 'hideVat' | 'hideDiscount'> = {};
+  for (const key of ['hideVat', 'hideDiscount'] as const) {
+    if (input[key] !== undefined) {
+      if (typeof input[key] !== 'boolean') throw new Error('Tùy chọn hiển thị phiếu không hợp lệ.');
+      display[key] = input[key];
+    }
+  }
+  const discountType = (value: unknown): 'amount' | 'percent' => {
+    if (value !== 'amount' && value !== 'percent') throw new Error('Kiểu chiết khấu không hợp lệ.');
+    return value;
+  };
+  const billDiscountType = modern ? discountType(input.billDiscountType) : undefined;
+  const billDiscount = modern ? numeric(input.billDiscount, 'Chiết khấu tổng bill', billDiscountType === 'percent' ? 100 : 999_999_999_999) : undefined;
+  if (billDiscountType === 'amount' && !Number.isInteger(billDiscount)) throw new Error('Chiết khấu phải là số đồng nguyên.');
   if (!Array.isArray(input.items) || !input.items.length || input.items.length > 100) throw new Error('Vui lòng thêm từ 1 đến 100 mặt hàng.');
   const items: StockIssueLine[] = input.items.map((entry, index) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`Dòng ${index + 1} không hợp lệ.`);
@@ -126,12 +188,26 @@ export function normalizeStockIssue(raw: unknown): StockIssueData {
     if (quantity > requested) throw new Error(`Thực xuất dòng ${index + 1} không được vượt số lượng yêu cầu.`);
     const unitPrice = numeric(entry.unitPrice, `Đơn giá dòng ${index + 1}`, 1_000_000_000);
     if (!Number.isInteger(unitPrice)) throw new Error(`Đơn giá dòng ${index + 1} phải là số đồng nguyên.`);
-    return { productId: field('productId'), name: field('name', true), sku: field('sku'), unit: field('unit', true), requested, quantity, unitPrice };
+    const extras: Partial<StockIssueLine> = {};
+    if (modern) {
+      extras.vatRate = numeric(entry.vatRate, `VAT dòng ${index + 1}`, 100);
+      if (![0, 5, 8, 10].includes(extras.vatRate)) throw new Error(`Chọn VAT 0%, 5%, 8% hoặc 10% ở dòng ${index + 1}.`);
+      extras.discountType = discountType(entry.discountType);
+      extras.discount = numeric(entry.discount, `Chiết khấu dòng ${index + 1}`, extras.discountType === 'percent' ? 100 : 999_999_999_999);
+      if (extras.discountType === 'amount' && (!Number.isInteger(extras.discount) || extras.discount > Math.round(quantity * unitPrice))) throw new Error(`Chiết khấu dòng ${index + 1} không được vượt tiền hàng và phải là số đồng nguyên.`);
+    }
+    return { ...extras, productId: field('productId'), name: field('name', true), sku: field('sku'), unit: field('unit', true), requested, quantity, unitPrice };
   });
   if (!items.some(item => item.quantity > 0)) throw new Error('Cần ít nhất một mặt hàng có số lượng thực xuất lớn hơn 0.');
-  if (stockIssueTotals(items, vatRate).total > 999_999_999_999) throw new Error('Tổng phiếu vượt giới hạn 999.999.999.999 đồng.');
+  const pricing = modern ? { pricingVersion: 2 as const, billDiscount, billDiscountType } : {};
+  if (modern) {
+    const afterLineDiscounts = items.reduce((sum, item) => { const gross = Math.round(item.quantity * item.unitPrice); return sum + gross - Math.round(item.discountType === 'percent' ? gross * item.discount! / 100 : item.discount!); }, 0);
+    if (billDiscountType === 'amount' && billDiscount! > afterLineDiscounts) throw new Error('Chiết khấu tổng bill không được vượt tiền hàng sau chiết khấu sản phẩm.');
+  }
+  if (items.reduce((sum, item) => sum + Math.round(item.quantity * item.unitPrice), 0) > 999_999_999_999) throw new Error('Tiền hàng vượt giới hạn 999.999.999.999 đồng.');
+  if (stockIssueAmounts({ items, vatRate, ...pricing } as StockIssueData).total > 999_999_999_999) throw new Error('Tổng phiếu vượt giới hạn 999.999.999.999 đồng.');
   return {
-    date, companyName: text('companyName', 'Tên công ty', true), companyAddress: text('companyAddress', 'Địa chỉ công ty', true),
+    ...pricing, ...display, date, companyName: text('companyName', 'Tên công ty', true), companyAddress: text('companyAddress', 'Địa chỉ công ty', true),
     customerId: text('customerId', 'Mã khách hàng'), recipient: text('recipient', 'Người / đơn vị nhận hàng', true), phone: text('phone', 'Số điện thoại', false, 30),
     address: text('address', 'Địa chỉ'), deliveryAddress: text('deliveryAddress', 'Địa điểm giao hàng'),
     reason: text('reason', 'Lý do xuất', true), warehouseId: text('warehouseId', 'Mã kho'), warehouseName: text('warehouseName', 'Kho xuất', true), warehouseLocation: text('warehouseLocation', 'Địa điểm kho'),

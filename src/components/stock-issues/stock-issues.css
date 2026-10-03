@@ -92,3 +92,18 @@
   .stock-paper { page: stockIssue; width: 100%; min-height: 0; padding: 0; margin: 0; box-shadow: none; }
   .paper-table thead { display: table-header-group; }.paper-table tr { break-inside: avoid; page-break-inside: avoid; }.paper-ending, .paper-letterhead, .paper-title { break-inside: avoid; page-break-inside: avoid; }
 }
+
+.issue-discount-input { display: flex; gap: 6px; min-width: 0; }
+.issue-discount-input select { width: 70px; flex-shrink: 0; }
+.issue-totals { grid-template-columns: minmax(180px, 1.4fr) repeat(4, minmax(0, 1fr)); gap: 14px; }
+.stock-paper-v2 .paper-table { font-size: 8.5pt; }
+.stock-paper-v2 .paper-table th, .stock-paper-v2 .paper-table td { padding: 1.5mm .7mm; }
+.paper-pricing-note { font-size: 9pt; margin: 2mm 0; line-height: 1.4; }
+@media (max-width: 760px) { .issue-totals { grid-template-columns: 1fr 1fr; } .issue-totals > label, .issue-totals .issue-grand-total { grid-column: 1 / -1; } }
+
+.issue-display-options > label, .issue-print-options label { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.issue-display-options > label { margin-top: 14px; }
+.issue-display-options input[type="checkbox"], .issue-print-options input[type="checkbox"] { width: 20px; height: 20px; min-height: 20px; flex-shrink: 0; accent-color: #065f46; }
+.issue-print-options { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 14px 24px; background: #f5faf7; padding: 14px 20px; border-bottom: 1px solid #ccd8d0; font-size: 14px; }
+.issue-print-options small { color: #52645e; }
+@media print { .issue-print-options { display: none !important; } }

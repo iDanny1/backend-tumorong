@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { moneyInWords, newStockIssue, normalizeStockIssue, stockIssueTotals } from '../src/lib/stockIssue.js';
+import { moneyInWords, newStockIssue, normalizeStockIssue, stockIssueTotals, upgradeStockIssue } from '../src/lib/stockIssue.js';
 import express from 'express';
 import mongoose from 'mongoose';
 import stockIssueRouter from '../src/routes/stockIssueRoutes.js';
@@ -99,4 +99,20 @@ test('HTTP routes validate, persist snapshots, deduplicate retries and search wi
   const all: any = await (await fetch(url)).json(); assert.equal(all.length, 2);
   const literalSearch: any = await (await fetch(`${url}?q=${encodeURIComponent('.*')}`)).json();
   assert.equal(literalSearch.length, 0, 'Search treats regex syntax as literal input');
+  const modern = { ...upgradeStockIssue(sample()), hideVat: true, hideDiscount: false, requestId: 'test-request-00000004', billDiscount: 100000, items: [
+    { ...sample().items[0], vatRate: 5, discount: 10, discountType: 'percent' },
+    { ...sample().items[0], name: 'Hàng 8%', quantity: 1, requested: 1, unitPrice: 200000, vatRate: 8, discount: 0, discountType: 'amount' },
+  ] };
+  const modernResponse = await post({ ...modern, totals: { total: 1 } });
+  assert.equal(modernResponse.status, 201);
+  const modernRecord: any = await modernResponse.json();
+  assert.equal(modernRecord.pricingVersion, 2);
+  assert.equal(modernRecord.hideVat, true);
+  assert.equal(modernRecord.hideDiscount, false);
+  assert.deepEqual(modernRecord.items.map((item: any) => item.vatRate), [5, 8]);
+  assert.equal(records.at(-1).totals.billDiscount, 100000);
+  assert.ok(records.at(-1).totals.total > 1);
+  assert.equal((await post(modern)).status, 200);
+  assert.equal(records.length, 3);
+  assert.equal((await post({ ...modern, requestId: 'test-request-00000005', billDiscount: 999999999 })).status, 400);
 });

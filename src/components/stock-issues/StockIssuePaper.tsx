@@ -1,13 +1,21 @@
 import React from 'react';
-import { money, moneyInWords, stockIssueTotals, type StockIssueData } from '../../lib/stockIssue';
+import { money, moneyInWords, stockIssuePricing, type StockIssueData } from '../../lib/stockIssue';
+
+import { LegacyStockIssuePaper } from './LegacyStockIssuePaper';
 
 export function StockIssuePaper({ data, number }: { data: StockIssueData; number?: string }) {
-  const totals = stockIssueTotals(data.items, data.vatRate);
+  if (data.pricingVersion !== 2) return <LegacyStockIssuePaper data={data} number={number} />;
+  const totals = stockIssuePricing(data);
+  const showVat = !data.hideVat;
+  const showDiscount = !data.hideDiscount;
+  const widths = [4, 20, 9, 6, 6, 6, 12, ...(showDiscount ? [10] : []), ...(showVat ? [5, 10] : []), 12];
+  const widthTotal = widths.reduce((sum, width) => sum + width, 0);
+  const summarySpan = widths.length - 1;
   const [year, month, day] = data.date.split('-');
-  return <article className="stock-paper" aria-label="Bản in phiếu xuất kho">
+  return <article className="stock-paper stock-paper-v2" aria-label="Bản in phiếu xuất kho">
     <div className="paper-letterhead">
       <div><strong>{data.companyName}</strong><div>{data.companyAddress}</div></div>
-      <div className="paper-template"><strong>Mẫu số: 02 - VT</strong><em>(Ban hành theo Thông tư số 133/2016/TT-BTC Ngày 26/08/2016 của Bộ Tài chính)</em></div>
+      <div className="paper-template"><strong>Mẫu nội bộ</strong><em>Tham khảo mẫu 02 - VT<br />Bổ sung thông tin bán hàng</em></div>
     </div>
     <div className="paper-title">
       <h1>PHIẾU XUẤT KHO</h1>
@@ -24,23 +32,23 @@ export function StockIssuePaper({ data, number }: { data: StockIssueData; number
       {data.phone && <div>Điện thoại liên hệ: {data.phone}</div>}
     </div>
     <table className="paper-table">
-      <colgroup><col style={{ width: '5%' }} /><col style={{ width: '29%' }} /><col style={{ width: '12%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} /><col style={{ width: '14%' }} /><col style={{ width: '16%' }} /></colgroup>
+      <colgroup>{widths.map((width, i) => <col key={i} style={{ width: `${width / widthTotal * 100}%` }} />)}</colgroup>
       <thead>
-        <tr><th rowSpan={2}>STT</th><th rowSpan={2}>Tên, nhãn hiệu, quy cách, phẩm chất vật tư, dụng cụ sản phẩm, hàng hóa</th><th rowSpan={2}>Mã số</th><th rowSpan={2}>Đơn vị tính</th><th colSpan={2}>Số lượng</th><th rowSpan={2}>Đơn giá</th><th rowSpan={2}>Thành tiền</th></tr>
+        <tr><th rowSpan={2}>STT</th><th rowSpan={2}>Tên, nhãn hiệu, quy cách, phẩm chất hàng hóa</th><th rowSpan={2}>Mã số</th><th rowSpan={2}>ĐVT</th><th colSpan={2}>Số lượng</th><th rowSpan={2}>Đơn giá</th>{showDiscount && <th rowSpan={2}>Chiết khấu (đ)</th>}{showVat && <><th rowSpan={2}>VAT %</th><th rowSpan={2}>Tiền VAT (đ)</th></>}<th rowSpan={2}>Thành tiền</th></tr>
         <tr><th>Yêu cầu</th><th>Thực xuất</th></tr>
-        <tr>{['A', 'B', 'C', 'D', '1', '2', '3', '4'].map(label => <th key={label}>{label}</th>)}</tr>
       </thead>
       <tbody>
         {data.items.map((item, index) => <tr key={index}>
           <td className="center">{index + 1}</td><td>{item.name}</td><td className="center">{item.sku}</td><td className="center">{item.unit}</td>
-          <td className="numeric">{money(item.requested)}</td><td className="numeric">{money(item.quantity)}</td><td className="numeric">{money(item.unitPrice)}</td><td className="numeric">{money(totals.lines[index])}</td>
+          <td className="numeric">{money(item.requested)}</td><td className="numeric">{money(item.quantity)}</td><td className="numeric">{money(item.unitPrice)}</td>{showDiscount && <td className="numeric">{money(totals.discounts[index])}</td>}{showVat && <><td className="numeric">{item.vatRate}%</td><td className="numeric">{money(totals.lineVat[index])}</td></>}<td className="numeric">{money(totals.lines[index])}</td>
         </tr>)}
-        <tr className="paper-total"><td /><th colSpan={6}>Cộng</th><td className="numeric">{money(totals.subtotal)}</td></tr>
-        <tr className="paper-total"><td /><th colSpan={5}>Thuế VAT</th><td className="numeric">{data.vatRate}%</td><td className="numeric">{money(totals.vat)}</td></tr>
-        <tr className="paper-total"><th colSpan={7}>Tổng tiền thanh toán</th><td className="numeric">{money(totals.total)}</td></tr>
+        <tr className="paper-total"><th colSpan={summarySpan}>Cộng tiền hàng</th><td className="numeric">{money(totals.subtotal)}</td></tr>
+        {showDiscount && <tr className="paper-total"><th colSpan={summarySpan}>Chiết khấu tổng bill{data.billDiscountType === 'percent' ? ` (${data.billDiscount}%)` : ''}</th><td className="numeric">{money(totals.billDiscount)}</td></tr>}
+        <tr className="paper-total"><th colSpan={summarySpan}>Tổng tiền thanh toán</th><td className="numeric">{money(totals.total)}</td></tr>
       </tbody>
     </table>
     <div className="paper-ending">
+      <p className="paper-pricing-note">Tổng tiền thanh toán đã tính đầy đủ các khoản áp dụng. Thông tin giá bán phục vụ đối chiếu thanh toán; giá trị xuất kho hạch toán theo sổ kế toán. Phiếu nội bộ không thay thế hóa đơn.</p>
       <div>Tổng số tiền (Viết bằng chữ): {moneyInWords(totals.total)}</div>
       <div>- Số chứng từ gốc kèm theo: {data.attachments || '........................'}</div>
       <div className="paper-signatures">
@@ -50,7 +58,7 @@ export function StockIssuePaper({ data, number }: { data: StockIssueData; number
           ['Thủ kho', '(Ký, họ tên)', data.keeper],
           ['Kế toán trưởng', '(Ký, họ tên)', data.accountant],
           ['Giám đốc', '(Ký, họ tên, đóng dấu)', data.director],
-        ].map(([title, instruction, name]) => <div key={title}><strong>{title}</strong>{title === 'Kế toán trưởng' && <div className="paper-accountant-note">(Hoặc bộ phận có nhu cầu nhập)</div>}<em>{instruction}</em><div className="signature-name">{name}</div></div>)}
+        ].map(([title, instruction, name]) => <div key={title}><strong>{title}</strong>{title === 'Kế toán trưởng' && <div className="paper-accountant-note">(Hoặc người được ủy quyền)</div>}<em>{instruction}</em><div className="signature-name">{name}</div></div>)}
       </div>
     </div>
   </article>;

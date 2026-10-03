@@ -1,12 +1,12 @@
 import { createHash, createSign } from 'node:crypto';
-import { stockIssueTotals, type SavedStockIssue } from '../lib/stockIssue.js';
+import { stockIssueAmounts, stockIssuePricing, type SavedStockIssue } from '../lib/stockIssue.js';
 
 // These worksheets belong exclusively to this integration. Existing sales sheets
 // and their AppSheet keys/formulas are never rewritten.
 export const bridgeTables = {
   customers: { title: 'CRM_KhachHang', headers: ['Mã KH', 'Tên KH', 'SĐT', 'Địa chỉ khách hàng', 'Email', 'Nhóm KH'] },
-  issues: { title: 'CRM_PhieuXuat', headers: ['Mã phiếu', 'Số phiếu', 'Ngày xuất', 'Mã KH', 'Người nhận', 'SĐT', 'Địa chỉ khách hàng', 'Địa điểm giao hàng', 'Kho xuất', 'Lý do xuất', 'Tiền hàng', 'VAT %', 'Tiền VAT', 'Tổng thanh toán', 'Người lập'] },
-  lines: { title: 'CRM_ChiTietXuat', headers: ['Mã dòng', 'Mã phiếu', 'STT', 'Mã sản phẩm', 'Tên sản phẩm', 'ĐVT', 'Yêu cầu', 'Thực xuất', 'Đơn giá', 'Thành tiền'] },
+  issues: { title: 'CRM_PhieuXuat', headers: ['Mã phiếu', 'Số phiếu', 'Ngày xuất', 'Mã KH', 'Người nhận', 'SĐT', 'Địa chỉ khách hàng', 'Địa điểm giao hàng', 'Kho xuất', 'Lý do xuất', 'Tiền hàng', 'VAT %', 'Tiền VAT', 'Tổng thanh toán', 'Người lập', 'CK sản phẩm', 'CK tổng bill', 'Phiên bản giá'] },
+  lines: { title: 'CRM_ChiTietXuat', headers: ['Mã dòng', 'Mã phiếu', 'STT', 'Mã sản phẩm', 'Tên sản phẩm', 'ĐVT', 'Yêu cầu', 'Thực xuất', 'Đơn giá', 'Thành tiền', 'VAT dòng %', 'CK sản phẩm', 'CK bill phân bổ', 'Tiền sau CK chưa VAT', 'Tiền VAT dòng'] },
 } as const;
 export type TableName = keyof typeof bridgeTables;
 export type SheetRow = (string | number)[];
@@ -26,10 +26,11 @@ export function customerRow(customer: any): SheetRow {
   return [String(customer._id), customer.name || '', customer.phone || '', customer.address || '', customer.email || '', customer.type === 'wholesale' ? 'Sỉ' : 'Lẻ'];
 }
 export function issueRows(issue: SavedStockIssue): { header: SheetRow; lines: SheetRow[] } {
-  const total = stockIssueTotals(issue.items, issue.vatRate);
+  const total = stockIssueAmounts(issue);
+  const pricing = issue.pricingVersion === 2 ? stockIssuePricing(issue) : null;
   return {
-    header: [issue._id, issue.number, issue.date, issue.customerId, issue.recipient, issue.phone, issue.address, issue.deliveryAddress, issue.warehouseName, issue.reason, total.subtotal, issue.vatRate, total.vat, total.total, issue.creator],
-    lines: issue.items.map((item, index) => [`${issue._id}:${index + 1}`, issue._id, index + 1, item.sku, item.name, item.unit, item.requested, item.quantity, item.unitPrice, total.lines[index]]),
+    header: [issue._id, issue.number, issue.date, issue.customerId, issue.recipient, issue.phone, issue.address, issue.deliveryAddress, issue.warehouseName, issue.reason, total.subtotal, pricing ? 'Theo từng dòng' : issue.vatRate, total.vat, total.total, issue.creator, pricing?.productDiscount ?? 0, pricing?.billDiscount ?? 0, issue.pricingVersion ?? 1],
+    lines: issue.items.map((item, index) => [`${issue._id}:${index + 1}`, issue._id, index + 1, item.sku, item.name, item.unit, item.requested, item.quantity, item.unitPrice, total.lines[index], item.vatRate ?? issue.vatRate, pricing?.discounts[index] ?? 0, pricing?.allocated[index] ?? 0, pricing?.taxable[index] ?? total.lines[index], pricing?.lineVat[index] ?? Math.round(total.lines[index] * issue.vatRate / 100)]),
   };
 }
 const quote = (title: string) => `'${title.replaceAll("'", "''")}'`;
@@ -98,6 +99,9 @@ export class GoogleSheetsBridge {
       const result = await this.request(`/values/${encodeURIComponent(`${quote(table.title)}!A:${lastColumn(key as TableName)}`)}`);
       if (!result.values?.length) {
         await this.request('/values:batchUpdate', { valueInputOption: 'RAW', data: [{ range: `${quote(table.title)}!A1`, values: [[...table.headers]] }] });
+      } else if ((key === 'issues' || key === 'lines') && JSON.stringify(result.values[0]) === JSON.stringify(table.headers.slice(0, key === 'issues' ? 15 : 10))) {
+        const oldLength = key === 'issues' ? 15 : 10;
+        await this.request('/values:batchUpdate', { valueInputOption: 'RAW', data: [{ range: `${quote(table.title)}!${String.fromCharCode(65 + oldLength)}1`, values: [[...table.headers.slice(oldLength)]] }] });
       } else if (JSON.stringify(result.values[0]) !== JSON.stringify(table.headers)) {
         throw new Error(`Bảng ${table.title} đã có dữ liệu khác. Dừng thiết lập để bảo vệ dữ liệu.`);
       }

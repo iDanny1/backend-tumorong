@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "test:stock-issue": "tsx --test scripts/stockIssue.test.ts",
+    "test:stock-issue": "tsx --test scripts/stockIssue.test.ts scripts/stockIssuePricing.test.ts scripts/stockIssueDisplay.test.tsx",
     "demo:stock-issue": "tsx scripts/previewStockIssue.ts",
     "appsheet:setup": "tsx scripts/setupAppSheet.ts",
     "test:appsheet": "tsx --test scripts/appSheetBridge.test.ts"

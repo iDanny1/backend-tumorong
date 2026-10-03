@@ -9,9 +9,15 @@ Trong trang quản trị, chọn **Bán tại cửa hàng**. Tài khoản quản
 5. Chọn **Xem phiếu & in**, kiểm tra mẫu, sau đó **Lưu phiếu & in**.
 6. Trong cửa sổ in của trình duyệt, chọn máy in hoặc **Lưu dưới dạng PDF**. Dùng khổ A4, tỉ lệ 100% và tắt đầu/chân trang của trình duyệt nếu có.
 
-Số phiếu được cấp tự động dạng `PXKYYYYMMDD-0001`. Đơn vị tính phải nhập khi danh mục chưa có. Số tiền dùng số lượng **thực xuất**, làm tròn đến đồng; VAT tính trên cộng tiền hàng. Số tiền bằng chữ được tự tạo.
+Số phiếu được cấp tự động dạng `PXKYYYYMMDD-0001`. Đơn vị tính phải nhập khi danh mục chưa có. Số tiền dùng số lượng **thực xuất**, làm tròn đến đồng. Phiếu mới chọn VAT từng sản phẩm và tính VAT sau chiết khấu sản phẩm, chiết khấu tổng bill phân bổ. Số tiền bằng chữ được tự tạo. Xem [đối chiếu pháp lý và cách tính](DOI_CHIEU_PHIEU_XUAT_2026.md).
+
+**Hiển thị trên phiếu:** chọn **Ẩn VAT** để bỏ cột thuế suất và tiền VAT; chọn **Ẩn chiết khấu** để bỏ cột chiết khấu và dòng chiết khấu tổng bill. Bảng tự giãn theo các cột còn lại. Tổng tiền thanh toán vẫn tính đầy đủ các khoản đã nhập. Các lựa chọn được lưu cùng phiếu mới. Khi in lại phiếu đã lưu theo mẫu mới, có thể đổi lựa chọn cho lần in đó mà không sửa nội dung đã lưu. Phiếu theo mẫu cũ vẫn in nguyên mẫu cũ.
+
+Tên cột: **Đơn giá** là giá một đơn vị; **Thành tiền** là số lượng thực xuất nhân đơn giá, trước chiết khấu. Các dòng tổng dùng **Cộng tiền hàng**, **Chiết khấu tổng bill**, **Tổng tiền thanh toán**.
 
 Thông tin công ty và các vị trí ký theo mẫu được cung cấp. Mục **Thông tin công ty, giao hàng & người ký** cho phép điều chỉnh trước khi lưu. Người nhận là đơn vị / khách hàng; tên người ký nhận là trường riêng, có thể để trống để ký tay.
+
+Trong mục này, **Chọn công ty lập phiếu** có hai lựa chọn: **CÔNG TY CỔ PHẦN RƯỢU SÂM VIỆT NAM ATUAGIN** và **CÔNG TY CỔ PHẦN SÂM NGỌC LINH TU MƠ RÔNG KON TUM**. Chọn một công ty sẽ tự điền tên và địa chỉ tương ứng. Công ty Tu Mơ Rông dùng địa chỉ **Làng Ko Xía 2, Xã Măng Ri, Tỉnh Quảng Ngãi, Việt Nam**. Phiếu chỉ hiển thị công ty đã chọn; thông tin được giữ nguyên khi lưu và in lại.
 
 ## Lưu, tìm và in lại
 

@@ -2,14 +2,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronLeft, Copy, FileText, Plus, Printer, Search, Trash2, X } from 'lucide-react';
 import { api } from '../../lib/api';
-import { money, newStockIssue, normalizeStockIssue, stockIssueTotals, type SavedStockIssue, type StockIssueData, type StockIssueLine } from '../../lib/stockIssue';
+import { money, STOCK_ISSUE_COMPANIES, newStockIssue, normalizeStockIssue, stockIssueAmounts, stockIssuePricing, upgradeStockIssue, type SavedStockIssue, type StockIssueData, type StockIssueLine } from '../../lib/stockIssue';
 import type { Customer, Product, User, Warehouse } from '../../types';
 import { StockIssuePaper } from './StockIssuePaper';
 import './stock-issues.css';
 
 type Props = { products: Product[]; customers: Customer[]; user: User };
 const findText = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
-const blankLine = (): StockIssueLine => ({ productId: '', name: '', sku: '', unit: '', requested: 1, quantity: 1, unitPrice: 0 });
+const blankLine = (): StockIssueLine => ({ productId: '', name: '', sku: '', unit: '', requested: 1, quantity: 1, unitPrice: 0, vatRate: -1, discount: 0, discountType: 'amount' });
 const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 const readableError = (error: unknown) => {
   const message = error instanceof Error ? error.message : '';
@@ -27,21 +27,21 @@ export function StockIssueManagement({ products, customers, user }: Props) {
     try {
       const stored = JSON.parse(localStorage.getItem(draftKey) || 'null');
       if (stored?.form && typeof stored.requestId === 'string' && Array.isArray(stored.form.items)) {
-        const defaults = newStockIssue(user.name);
+        const defaults = upgradeStockIssue(newStockIssue(user.name));
         // Recover partial input, including unfinished rows, without trusting the saved shape.
         const form = { ...defaults };
         for (const key of Object.keys(defaults) as (keyof StockIssueData)[]) {
           if (key !== 'items' && typeof stored.form[key] === typeof defaults[key]) (form as any)[key] = stored.form[key];
         }
         form.items = stored.form.items.slice(0, 100).map((entry: any) => {
-          const line = blankLine();
+          const line = { ...blankLine(), vatRate: stored.form.pricingVersion === 2 ? -1 : form.vatRate };
           for (const key of Object.keys(line) as (keyof StockIssueLine)[]) if (typeof entry?.[key] === typeof line[key]) (line as any)[key] = entry[key];
           return line;
         });
         return { form, requestId: stored.requestId, recovered: true };
       }
     } catch { /* A damaged or disabled browser store must not stop the form. */ }
-    return { form: newStockIssue(user.name), requestId: crypto.randomUUID(), recovered: false };
+    return { form: upgradeStockIssue(newStockIssue(user.name)), requestId: crypto.randomUUID(), recovered: false };
   });
   const [form, setForm] = useState<StockIssueData>(initial.form);
   const [requestId, setRequestId] = useState(initial.requestId);
@@ -64,7 +64,7 @@ export function StockIssueManagement({ products, customers, user }: Props) {
   const [productQuery, setProductQuery] = useState('');
   const [preview, setPreview] = useState<{ data: StockIssueData; record: SavedStockIssue | null } | null>(null);
   const [paperScale, setPaperScale] = useState(() => Math.min(1, (window.innerWidth - 48) / (210 * 96 / 25.4)));
-  const totals = stockIssueTotals(form.items, form.vatRate);
+  const totals = stockIssuePricing(form);
 
   useEffect(() => {
     let active = true;
@@ -127,14 +127,14 @@ export function StockIssueManagement({ products, customers, user }: Props) {
     setForm(prev => {
       const index = prev.items.findIndex(item => item.productId === product._id);
       if (index >= 0) return { ...prev, items: prev.items.map((item, i) => i === index ? { ...item, requested: item.requested + 1, quantity: item.quantity + 1 } : item) };
-      return { ...prev, items: [...prev.items, { productId: product._id, name: product.name, sku: product.sku || product.barcode || '', unit: product.unit || '', requested: 1, quantity: 1, unitPrice: product.price || 0 }] };
+      return { ...prev, items: [...prev.items, { productId: product._id, name: product.name, sku: product.sku || product.barcode || '', unit: product.unit || '', requested: 1, quantity: 1, unitPrice: product.price || 0, vatRate: -1, discount: 0, discountType: 'amount' }] };
     });
     setProductQuery(''); setError('');
   };
 
   const beginNew = (copy?: StockIssueData) => {
     if (!saved && (form.recipient || form.items.length) && !window.confirm('Bạn đang có phiếu chưa lưu. Thay bằng phiếu mới?')) return;
-    const next = copy ? { ...copy, items: copy.items.map(item => ({ ...item })) } : { ...newStockIssue(user.name), companyName: form.companyName, companyAddress: form.companyAddress, warehouseId: form.warehouseId, warehouseName: form.warehouseName, warehouseLocation: form.warehouseLocation };
+    const next = copy ? upgradeStockIssue(copy) : { ...upgradeStockIssue(newStockIssue(user.name)), companyName: form.companyName, companyAddress: form.companyAddress, warehouseId: form.warehouseId, warehouseName: form.warehouseName, warehouseLocation: form.warehouseLocation };
     setForm(next); setRequestId(crypto.randomUUID()); setSaved(null); setPreview(null); setError(''); setProductQuery(''); setCustomerQuery(''); setView('form');
   };
   const openPreview = () => {
@@ -166,7 +166,7 @@ export function StockIssueManagement({ products, customers, user }: Props) {
     {view === 'history' ? <section className="issue-card">
       <div className="issue-section-title"><h2>Phiếu đã lưu</h2><span>50 kết quả gần nhất</span></div>
       <form className="issue-search-row" onSubmit={event => { event.preventDefault(); setHistoryQuery(historySearch); setHistoryReload(value => value + 1); }}><input aria-label="Tìm phiếu đã lưu" placeholder="Nhập số phiếu, tên khách hoặc số điện thoại" value={historySearch} onChange={event => setHistorySearch(event.target.value)} /><button className="issue-button secondary" type="submit"><Search size={18} />Tìm phiếu</button></form>
-      {historyLoading ? <p role="status">Đang tải phiếu…</p> : historyError ? <p role="alert" className="issue-error">{historyError}</p> : history.length === 0 ? <p className="issue-empty">Chưa có phiếu phù hợp. Phiếu lưu xong sẽ xuất hiện tại đây.</p> : <div className="issue-history">{history.map(record => <button type="button" key={record._id} onClick={() => { setPreview({ data: record, record }); setError(''); }}><span><strong>{record.number}</strong><span>{record.recipient}</span><small>{record.date.split('-').reverse().join('/')} · {record.warehouseName}</small></span><span><strong>{money(stockIssueTotals(record.items, record.vatRate).total)} đ</strong><small>Xem / in lại →</small></span></button>)}</div>}
+      {historyLoading ? <p role="status">Đang tải phiếu…</p> : historyError ? <p role="alert" className="issue-error">{historyError}</p> : history.length === 0 ? <p className="issue-empty">Chưa có phiếu phù hợp. Phiếu lưu xong sẽ xuất hiện tại đây.</p> : <div className="issue-history">{history.map(record => <button type="button" key={record._id} onClick={() => { setPreview({ data: record, record }); setError(''); }}><span><strong>{record.number}</strong><span>{record.recipient}</span><small>{record.date.split('-').reverse().join('/')} · {record.warehouseName}</small></span><span><strong>{money(stockIssueAmounts(record).total)} đ</strong><small>Xem / in lại →</small></span></button>)}</div>}
     </section> : <>
       <div className="issue-steps"><span><b>1</b> Người nhận & kho</span><span><b>2</b> Hàng xuất</span><span><b>3</b> Xem phiếu & in</span></div>
       {saved ? <div className="issue-success" role="status"><Check size={20} /><span>Đã lưu <strong>{saved.number}</strong>. Bạn có thể in lại hoặc lập phiếu tiếp theo.</span><button type="button" onClick={() => beginNew()} className="issue-button secondary">Lập phiếu mới</button></div> : <p className="issue-draft">{storageError || (initial.recovered ? 'Đã mở lại nội dung đang soạn. Bản nháp được giữ trên máy này.' : 'Bản nháp được tự giữ trên máy này khi bạn nhập. Chọn “Lưu phiếu” để lưu vào hệ thống.')}</p>}
@@ -189,7 +189,7 @@ export function StockIssueManagement({ products, customers, user }: Props) {
         <section className="issue-card"><h2><span className="issue-step">2</span> Hàng cần xuất</h2>
           <Field label="Tìm sản phẩm"><div className="issue-search"><Search size={19} /><input value={productQuery} onChange={event => setProductQuery(event.target.value)} placeholder="Gõ tên hàng, mã hàng hoặc mã vạch…" /></div></Field>
           {productQuery.trim() && <div className="issue-results">{matches(products.filter(p => p.active !== false), productQuery, p => `${p.name} ${p.sku || ''} ${p.barcode || ''}`).map(product => <button type="button" key={product._id} onClick={() => addProduct(product)}><strong>{product.name}</strong><small>{product.sku || product.barcode || 'Chưa có mã'} · Giá danh mục: {money(product.price || 0)} đ</small></button>)}{!matches(products.filter(p => p.active !== false), productQuery, p => `${p.name} ${p.sku || ''} ${p.barcode || ''}`).length && <p>Chưa có trong danh mục. Chọn “Thêm hàng bằng tay”.</p>}</div>}
-          <p className="issue-hint">Kiểm tra đơn vị tính và đơn giá chưa VAT trước khi in. Chọn lại cùng sản phẩm sẽ tăng số lượng thêm 1.</p>
+          <p className="issue-hint">Kiểm tra đơn vị tính, giá bán chưa VAT và thuế suất từng sản phẩm trước khi in. Chọn lại cùng sản phẩm sẽ tăng số lượng thêm 1.</p>
           {!form.items.length && <div className="issue-empty"><FileText size={30} /><p>Chưa có hàng trên phiếu</p><small>Tìm sản phẩm ở trên hoặc thêm hàng bằng tay.</small></div>}
           <div className="issue-lines">{form.items.map((item, index) => <section className="issue-line" key={index} aria-label={`Mặt hàng ${index + 1}`}>
             <div className="issue-section-title"><h3>Mặt hàng {index + 1}</h3><button type="button" className="issue-remove" aria-label={`Xóa mặt hàng ${index + 1}`} onClick={() => setForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }))}><Trash2 size={16} />Bỏ dòng</button></div>
@@ -199,15 +199,34 @@ export function StockIssueManagement({ products, customers, user }: Props) {
               <Field label="Đơn vị tính *"><input list="issue-units" placeholder="Chai, hộp, thùng…" value={item.unit} onChange={event => updateLine(index, { unit: event.target.value })} /></Field>
               <Field label="Số lượng yêu cầu *"><input type="number" min="0.001" max="1000000" step="any" value={item.requested || ''} onChange={event => { const requested = Number(event.target.value); updateLine(index, { requested, quantity: item.quantity === item.requested ? requested : item.quantity }); }} /></Field>
               <Field label="Số lượng thực xuất *"><input type="number" min="0" max={item.requested} step="any" value={item.quantity} onChange={event => updateLine(index, { quantity: Number(event.target.value) })} /></Field>
-              <Field label="Đơn giá chưa VAT (đ) *"><input type="number" min="0" max="1000000000" step="1" value={item.unitPrice} onChange={event => updateLine(index, { unitPrice: Number(event.target.value) })} /></Field>
+              <Field label="Đơn giá (đ) *"><input type="number" min="0" max="1000000000" step="1" value={item.unitPrice} onChange={event => updateLine(index, { unitPrice: Number(event.target.value) })} /></Field>
+              <Field label="VAT *"><select value={item.vatRate} onChange={event => updateLine(index, { vatRate: Number(event.target.value) })}><option value={-1}>Chọn thuế suất</option>{[0, 5, 8, 10].map(rate => <option key={rate} value={rate}>{rate}%</option>)}</select></Field>
+              <Field label="Chiết khấu"><div className="issue-discount-input"><input aria-label={`Chiết khấu ${index + 1}`} type="number" min="0" step={item.discountType === 'percent' ? '0.01' : '1'} max={item.discountType === 'percent' ? 100 : totals.lines[index]} value={item.discount ?? 0} onChange={event => updateLine(index, { discount: Number(event.target.value) })} /><select aria-label={`Đơn vị chiết khấu từng dòng ${index + 1}`} value={item.discountType ?? 'amount'} onChange={event => updateLine(index, { discountType: event.target.value as 'amount' | 'percent', discount: 0 })}><option value="amount">đ</option><option value="percent">%</option></select></div></Field>
               <div className="issue-line-total"><span>Thành tiền</span><strong>{money(totals.lines[index])} đ</strong></div>
+              <div className="issue-line-total"><span>VAT sau các chiết khấu</span><strong>{item.vatRate! >= 0 ? `${money(totals.lineVat[index])} đ` : 'Chọn VAT'}</strong></div>
             </div>
           </section>)}</div>
           <datalist id="issue-units">{['Chai', 'Hộp', 'Thùng', 'Gói', 'Cái', 'Bộ', 'Kg', 'Lít'].map(unit => <option value={unit} key={unit} />)}</datalist>
           <button type="button" className="issue-button secondary" disabled={form.items.length >= 100} onClick={() => setForm(prev => ({ ...prev, items: [...prev.items, blankLine()] }))}><Plus size={20} />Thêm hàng bằng tay</button>
-          <div className="issue-totals"><Field label="Thuế VAT (%)"><input type="number" min="0" max="100" step="0.01" value={form.vatRate} onChange={event => change('vatRate', Number(event.target.value))} /></Field><div><span>Tiền hàng</span><strong>{money(totals.subtotal)} đ</strong></div><div><span>Tiền VAT</span><strong>{money(totals.vat)} đ</strong></div><div className="issue-grand-total"><span>Tổng thanh toán</span><strong>{money(totals.total)} đ</strong></div></div>
+          <div className="issue-totals">
+            <Field label="Chiết khấu tổng bill"><div className="issue-discount-input"><input aria-label="Chiết khấu tổng bill" type="number" min="0" max={form.billDiscountType === 'percent' ? 100 : totals.subtotal - totals.productDiscount} step={form.billDiscountType === 'percent' ? '0.01' : '1'} value={form.billDiscount ?? 0} onChange={event => change('billDiscount', Number(event.target.value))} /><select aria-label="Đơn vị chiết khấu tổng bill" value={form.billDiscountType ?? 'amount'} onChange={event => { change('billDiscountType', event.target.value as 'amount' | 'percent'); change('billDiscount', 0); }}><option value="amount">đ</option><option value="percent">%</option></select></div></Field>
+            <div><span>Tiền hàng</span><strong>{money(totals.subtotal)} đ</strong></div>
+            <div><span>Chiết khấu</span><strong>{money(totals.productDiscount)} đ</strong></div>
+            <div><span>Chiết khấu tổng bill</span><strong>{money(totals.billDiscount)} đ</strong></div>
+            <div className="issue-grand-total"><span>Tổng tiền thanh toán</span><strong>{form.items.some(item => item.vatRate! < 0) ? 'Chọn đủ VAT' : `${money(totals.total)} đ`}</strong></div>
+          </div>
+          <p className="issue-hint">Chiết khấu áp dụng trước VAT; chiết khấu tổng bill phân bổ theo tiền hàng sau chiết khấu từng dòng. Chọn thuế suất theo từng mặt hàng.</p>
+        </section>
+        <section className="issue-card issue-display-options"><h2><span className="issue-step">3</span> Hiển thị trên phiếu</h2>
+          <label><input type="checkbox" checked={form.hideVat ?? false} onChange={event => change('hideVat', event.target.checked)} />Ẩn VAT (cột thuế suất và tiền VAT)</label>
+          <label><input type="checkbox" checked={form.hideDiscount ?? false} onChange={event => change('hideDiscount', event.target.checked)} />Ẩn chiết khấu (cột và dòng tổng bill)</label>
+          <p className="issue-hint">Tùy chọn áp dụng cho bản xem trước và bản in. Tổng tiền thanh toán vẫn tính đầy đủ VAT và chiết khấu đã nhập.</p>
         </section>
         <details className="issue-card issue-options"><summary>Thông tin công ty, giao hàng & người ký <span>Chỉ mở khi cần thay đổi</span></summary><div className="issue-grid">
+          <Field label="Chọn công ty lập phiếu" wide><select value={STOCK_ISSUE_COMPANIES.find(company => company.name === form.companyName && company.address === form.companyAddress)?.name ?? ''} onChange={event => { const company = STOCK_ISSUE_COMPANIES.find(company => company.name === event.target.value); if (company) { setForm(prev => ({ ...prev, companyName: company.name, companyAddress: company.address })); setError(''); } }}>
+            {!STOCK_ISSUE_COMPANIES.some(company => company.name === form.companyName && company.address === form.companyAddress) && <option value="">Thông tin công ty đang nhập</option>}
+            {STOCK_ISSUE_COMPANIES.map(company => <option key={company.name} value={company.name}>{company.name}</option>)}
+          </select></Field>
           <Field label="Tên công ty *" wide><input value={form.companyName} onChange={event => change('companyName', event.target.value)} /></Field>
           <Field label="Địa chỉ công ty *" wide><input value={form.companyAddress} onChange={event => change('companyAddress', event.target.value)} /></Field>
           <Field label="Địa điểm giao hàng" wide><input value={form.deliveryAddress} onChange={event => change('deliveryAddress', event.target.value)} /></Field>
@@ -219,12 +238,17 @@ export function StockIssueManagement({ products, customers, user }: Props) {
         </div></details>
       </fieldset>
       <p className="issue-hint">Mục này lập và in chứng từ; tồn kho vẫn được cập nhật theo quy trình quản lý kho hiện tại.</p>
-      <footer className="issue-action-bar"><div><small>Tổng thanh toán</small><strong>{money(totals.total)} đ</strong></div><button type="button" className="issue-button primary" onClick={openPreview}><Printer size={22} />Xem phiếu & in</button></footer>
+      <footer className="issue-action-bar"><div><small>Tổng tiền thanh toán</small><strong>{form.items.some(item => item.vatRate! < 0) ? 'Chọn đủ VAT' : `${money(totals.total)} đ`}</strong></div><button type="button" className="issue-button primary" onClick={openPreview}><Printer size={22} />Xem phiếu & in</button></footer>
     </>}
     {error && !preview && <div className="issue-error issue-error-fixed" role="alert">{error}<button aria-label="Đóng thông báo" onClick={() => setError('')}><X size={18} /></button></div>}
     {preview && createPortal(<div className="issue-preview-root" role="dialog" aria-modal="true" aria-label="Xem trước phiếu xuất kho">
       <div className="issue-preview-toolbar"><button autoFocus type="button" className="issue-button secondary" disabled={saving} onClick={() => { setPreview(null); setError(''); }}><ChevronLeft size={20} />Quay lại</button><div><strong>{preview.record ? preview.record.number : 'Kiểm tra phiếu trước khi in'}</strong><small>Khổ A4 · Chọn “Lưu dưới dạng PDF” trong cửa sổ in để tải PDF.</small></div><div className="issue-preview-actions">{preview.record ? <button type="button" className="issue-button secondary" disabled={saving} onClick={() => beginNew(preview.data)}><Copy size={18} />Sao chép để sửa</button> : <button type="button" className="issue-button secondary" disabled={saving} onClick={() => saveAndPrint(false)}>Lưu phiếu</button>}<button type="button" className="issue-button primary" disabled={saving} onClick={() => saveAndPrint(true)}><Printer size={20} />{saving ? 'Đang chuẩn bị…' : preview.record ? 'In phiếu / Lưu PDF' : 'Lưu phiếu & in'}</button></div></div>
       {error && <div className="issue-error" role="alert">{error}</div>}
+      {preview.data.pricingVersion === 2 && <div className="issue-print-options">
+        <strong>Hiển thị trên phiếu</strong>
+        {([['hideVat', 'Ẩn VAT'], ['hideDiscount', 'Ẩn chiết khấu']] as const).map(([key, label]) => <label key={key}><input type="checkbox" checked={preview.data[key] ?? false} onChange={event => { const checked = event.target.checked; setPreview(prev => prev ? { ...prev, data: { ...prev.data, [key]: checked } } : prev); if (!preview.record) change(key, checked); }} />{label}</label>)}
+        {preview.record && <small>Lựa chọn cho lần in này; nội dung phiếu đã lưu giữ nguyên.</small>}
+      </div>}
       {preview.record && <p className="issue-preview-notice" role="status"><Check size={16} />Phiếu đã được lưu. In lại không tạo thêm phiếu.</p>}
       <div className="issue-paper-scroll"><div className="issue-paper-fit" style={{ zoom: paperScale }}><StockIssuePaper data={preview.data} number={preview.record?.number} /></div></div>
     </div>, document.body)}

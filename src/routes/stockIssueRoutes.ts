@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import mongoose, { Schema } from 'mongoose';
-import { normalizeStockIssue, stockIssueTotals } from '../lib/stockIssue.js';
+import { normalizeStockIssue, stockIssueAmounts } from '../lib/stockIssue.js';
 
 const issueSchema = new Schema({
   requestId: { type: String, required: true, unique: true },
@@ -48,7 +48,7 @@ router.post('/', async (req, res) => {
     const counter = await StockIssueCounter.findOneAndUpdate({ _id: day }, { $inc: { value: 1 } }, { upsert: true, new: true });
     const number = `PXK${day}-${String(counter.value).padStart(4, '0')}`;
     // Paper records intentionally do not mutate orders, stock, or customer spending.
-    const doc = await StockIssue.create({ requestId, number, data, totals: stockIssueTotals(data.items, data.vatRate) });
+    const doc = await StockIssue.create({ requestId, number, data, totals: stockIssueAmounts(data) });
     res.status(201).json(serialize(doc));
   } catch (error: any) {
     if (error.code === 11000) {
