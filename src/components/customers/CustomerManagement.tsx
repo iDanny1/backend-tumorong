@@ -72,10 +72,11 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
         body: formData
       });
       const data = await response.json();
+      if (!response.ok) throw new Error(data.error || data.message || 'Lỗi khi nhập file Excel');
       alert(data.message || 'Nhập thành công');
       if (onRefresh) onRefresh();
     } catch (error) {
-      alert('Lỗi khi nhập file Excel');
+      alert(error instanceof Error ? error.message : 'Lỗi khi nhập file Excel');
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -83,7 +84,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
   const filteredCustomers = customers.filter(customer => {
     const matchesTab = activeTab === 'all' || customer.type === 'wholesale';
     const matchesSearch = customer.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         customer.phone.includes(searchQuery) ||
+                         (customer.phone || '').includes(searchQuery) ||
                          (customer.address || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesTab && matchesSearch;
   });

@@ -35,3 +35,12 @@ test('display settings persist only as booleans and old v2 records keep their sh
   assert.ok(!('hideVat' in data));
   assert.ok(!('hideDiscount' in data));
 });
+
+test('warehouse address survives validation and appears on both printable templates', () => {
+  const warehouseLocation = '38/15 Nguyễn Giản Thanh, Phường Hòa Hưng, Thành phố Hồ Chí Minh';
+  for (const data of [normalizeStockIssue({ ...sample, warehouseLocation }), normalizeStockIssue({ ...newStockIssue(), recipient: sample.recipient, warehouseName: 'Kho Q10', warehouseLocation, items: sample.items })]) {
+    assert.equal(data.warehouseLocation, warehouseLocation);
+    const html = renderToStaticMarkup(<StockIssuePaper data={data} />);
+    assert.ok(html.includes(warehouseLocation));
+  }
+});

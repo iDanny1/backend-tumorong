@@ -41,6 +41,10 @@ export interface Customer {
   phone: string;
   email?: string;
   address?: string;
+  deliveryAddress?: string;
+  departmentAddress?: string;
+  phoneRaw?: string;
+  contactName?: string;
   avatar?: string;
   ordersCount: number;
   totalSpent: number;
@@ -73,6 +77,7 @@ export interface Warehouse {
   _id: string;
   name: string;
   location?: string;
+  address?: string;
   orderCount: number;
   createdAt: string;
 }

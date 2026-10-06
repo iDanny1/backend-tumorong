@@ -3,13 +3,14 @@ import express from 'express';
 import { createServer } from 'vite';
 import { randomUUID } from 'node:crypto';
 import { normalizeStockIssue, type SavedStockIssue } from '../src/lib/stockIssue.js';
-import { demoCustomer } from './stockIssueDemoData.js';
+import { demoCustomer, demoProducts } from './stockIssueDemoData.js';
 
 const app = express();
 const records: SavedStockIssue[] = [];
 let customer = { ...demoCustomer };
 app.use(express.json());
 app.get('/api/customers', (_req, res) => res.json([customer]));
+app.get('/api/products', (_req, res) => res.json(demoProducts));
 app.put('/api/customers/:id', (req, res) => {
   if (req.params.id !== customer._id) return res.status(404).json({ message: 'Không tìm thấy khách mẫu.' });
   if (typeof req.body.address === 'string') customer.address = req.body.address.trim();
@@ -17,7 +18,7 @@ app.put('/api/customers/:id', (req, res) => {
   res.json(customer);
 });
 app.get('/api/integrations/appsheet/status', (_req, res) => res.json({ enabled: false, state: 'disabled', message: 'Bản thử chưa gửi dữ liệu lên Google Sheets hoặc AppSheet.' }));
-app.get('/api/warehouses', (_req, res) => res.json([{ _id: 'demo-warehouse', name: 'Kho quận 1', location: 'TP. Hồ Chí Minh' }]));
+app.get('/api/warehouses', (_req, res) => res.json([{ _id: 'demo-warehouse', name: 'Kho quận 1', address: '38/15 Nguyễn Giản Thanh, Phường Hòa Hưng, Thành phố Hồ Chí Minh' }]));
 app.get('/api/stock-issues', (req, res) => {
   const q = String(req.query.q || '').toLocaleLowerCase();
   res.json(records.filter(record => `${record.number} ${record.recipient} ${record.phone}`.toLocaleLowerCase().includes(q)).slice(0, 50));

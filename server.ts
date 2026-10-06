@@ -7,6 +7,9 @@ import { startAppSheetSync, appSheetSyncStatus } from './src/services/appSheetSy
 import { AdvancedVoucher } from './src/models/AdvancedVoucher.js';
 import { UserVoucherUsage } from './src/models/UserVoucherUsage.js';
 import { SpinUser } from './src/models/SpinUser.js';
+import { Customer, prepareCustomerIndexes } from './src/models/Customer.js';
+import { importCustomerRows } from './src/lib/customerImport.js';
+import { warehouseInput } from './src/lib/warehouse.js';
 import express from 'express';
 import mongoose, { Schema, Document, Model } from 'mongoose';
 import path from 'path';
@@ -47,6 +50,7 @@ interface IProduct extends Document {
   createdAt: string;
   sku?: string;
   barcode?: string;
+  unit?: string;
 }
 const productSchema = new Schema<IProduct>({
   name: String,
@@ -62,7 +66,8 @@ const productSchema = new Schema<IProduct>({
   categoryNames: [String],
   createdAt: { type: String, default: () => new Date().toISOString() },
   sku: String,
-  barcode: String
+  barcode: String,
+  unit: String
 });
 const Product: Model<IProduct> = mongoose.model('Product', productSchema);
 
@@ -277,37 +282,6 @@ const userSchema = new Schema<IUser>({
 });
 const User: Model<IUser> = mongoose.model('User', userSchema);
 
-// Customer
-interface ICustomer extends Document {
-  name: string;
-  phone: string;
-  email?: string;
-  address?: string;
-  ordersCount?: number;
-  totalSpent?: number;
-  remainingPoints?: number;
-  totalPoints?: number;
-  tags?: string[];
-  type?: string;
-  lastAccess?: string;
-  createdAt: string;
-}
-const customerSchema = new Schema<ICustomer>({
-  name: String,
-  phone: { type: String, unique: true },
-  email: String,
-  address: String,
-  ordersCount: { type: Number, default: 0 },
-  totalSpent: { type: Number, default: 0 },
-  remainingPoints: { type: Number, default: 0 },
-  totalPoints: { type: Number, default: 0 },
-  tags: [String],
-  type: { type: String, default: 'retail' }, // retail, wholesale
-  lastAccess: { type: String, default: () => new Date().toISOString() },
-  createdAt: { type: String, default: () => new Date().toISOString() }
-});
-const Customer: Model<ICustomer> = mongoose.model('Customer', customerSchema);
-
 // Category
 interface ICategory extends Document {
   name: string;
@@ -331,6 +305,7 @@ const Category: Model<ICategory> = mongoose.model('Category', categorySchema);
 interface IWarehouse extends Document {
   name: string;
   address?: string;
+  location?: string;
   phone?: string;
   active?: boolean;
   createdAt: string;
@@ -338,6 +313,7 @@ interface IWarehouse extends Document {
 const warehouseSchema = new Schema<IWarehouse>({
   name: String,
   address: String,
+  location: String,
   phone: String,
   active: Boolean,
   createdAt: { type: String, default: () => new Date().toISOString() }
@@ -652,6 +628,8 @@ async function startServer() {
     console.error('❌ MongoDB connection failed:', err);
     process.exit(1);
   }
+
+  await prepareCustomerIndexes();
 
   // Seed data
   await seedData();
@@ -1417,8 +1395,13 @@ async function startServer() {
   });
 
   app.post('/api/warehouses', async (req, res) => {
+    let input: Record<string, unknown>;
     try {
-      const warehouse = await Warehouse.create({ ...req.body, createdAt: new Date().toISOString() });
+      input = warehouseInput(req.body);
+      if (!input.name) throw new Error('Vui lòng nhập tên kho.');
+    } catch (err) { return res.status(400).json({ error: (err as Error).message }); }
+    try {
+      const warehouse = await Warehouse.create({ ...input, createdAt: new Date().toISOString() });
       res.status(201).json(warehouse);
     } catch (err) {
       res.status(500).json({ error: 'Lỗi tạo kho hàng' });
@@ -1426,9 +1409,13 @@ async function startServer() {
   });
 
   app.put('/api/warehouses/:id', async (req, res) => {
+    let input: Record<string, unknown>;
+    try { input = warehouseInput(req.body); }
+    catch (err) { return res.status(400).json({ error: (err as Error).message }); }
     try {
-      await Warehouse.findByIdAndUpdate(req.params.id, { $set: req.body });
-      res.json({ success: true });
+      const warehouse = await Warehouse.findByIdAndUpdate(req.params.id, { $set: input }, { new: true });
+      if (!warehouse) return res.status(404).json({ error: 'Không tìm thấy kho hàng.' });
+      res.json(warehouse);
     } catch (err) {
       res.status(500).json({ error: 'Lỗi cập nhật kho hàng' });
     }
@@ -1613,6 +1600,9 @@ async function startServer() {
         Tên: c.name || '',
         'Số điện thoại': c.phone || '',
         'Địa chỉ khách hàng': c.address || '',
+        'Địa chỉ (bộ phận)': c.departmentAddress || '',
+        'Địa điểm giao hàng': c.deliveryAddress || '',
+        'Thông tin liên hệ gốc': c.phoneRaw || c.phone || '',
         'Email': c.email || '',
         'Loại khách': c.type === 'wholesale' ? 'Sỉ' : 'Lẻ',
         'Tổng đơn': c.ordersCount || 0,
@@ -1636,26 +1626,10 @@ async function startServer() {
       if (!req.file) return res.status(400).json({ error: "Không tìm thấy file" });
       const wb = xlsx.read(req.file.buffer, { type: 'buffer' });
       const wsname = wb.SheetNames[0];
-      const data: any[] = xlsx.utils.sheet_to_json(wb.Sheets[wsname]);
-      let count = 0;
-      for (const row of data) {
-        if (!row['Số điện thoại']) continue;
-        const phone = String(row['Số điện thoại']).replace(/\s/g, '');
-        const existing = await Customer.findOne({ phone });
-        if (!existing) {
-          await Customer.create({
-            name: row['Tên'] || 'Khách Mới',
-            phone: phone,
-            address: row['Địa chỉ khách hàng'] || row['Địa chỉ'] || '',
-            email: row['Email'] || '',
-            type: row['Loại khách'] === 'Sỉ' ? 'wholesale' : 'retail',
-            ordersCount: Number(row['Tổng đơn']) || 0,
-            totalSpent: Number(row['Tổng chi tiêu']) || 0,
-          });
-          count++;
-        }
-      }
-      res.json({ message: `Nhập thành công ${count} khách hàng mới.` });
+      const data = xlsx.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wsname], { raw: false, defval: '' });
+      const result = await importCustomerRows(data, Customer);
+      const warning = result.warnings.length ? ` Có ${result.warnings.length} số điện thoại cần kiểm tra.` : '';
+      res.json({ ...result, message: `Nhập thành công ${result.inserted} khách hàng mới; ${result.existing} hồ sơ đã có; bỏ qua ${result.skipped} dòng thiếu tên.${warning}` });
     } catch (err) {
       res.status(500).json({ error: String(err) });
     }

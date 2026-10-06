@@ -5,14 +5,9 @@ import type { Product, Customer } from '../src/types';
 import { CustomerManagement } from '../src/components/customers/CustomerManagement';
 import { CustomerDetail } from '../src/components/customers/CustomerDetail';
 import { api } from '../src/lib/api';
-import { demoCustomer } from './stockIssueDemoData';
+import { demoCustomer, demoProducts as products } from './stockIssueDemoData';
 import '../src/index.css';
 
-const products: Product[] = [
-  { _id: 'demo-black', name: 'Rượu Sâm Ngọc Linh Atuagin Black', sku: 'AT-BLACK', price: 600000, unit: 'Chai', stock: 120, active: true },
-  { _id: 'demo-tea', name: 'Trà Ô Long Sâm Ngọc Linh', sku: 'TRA-OL', price: 250000, unit: 'Hộp', stock: 60, active: true },
-  { _id: 'demo-coffee', name: 'Cà Phê Sâm Ngọc Linh', sku: 'CF-SAM', price: 180000, unit: 'Hộp', stock: 80, active: true },
-].map(p => ({ ...p, barcode: '', categoryIds: [], categoryNames: [], images: [], status: 'Còn hàng', type: 'Vật lý', platform: 'Cửa hàng' }));
 function Demo() {
   const [customers, setCustomers] = useState<Customer[]>([demoCustomer]);
   const [view, setView] = useState<'issues' | 'customers'>('issues');

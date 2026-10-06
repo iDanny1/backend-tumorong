@@ -12,6 +12,8 @@ import {
   TrendingUp,
   Box
 } from 'lucide-react';
+import { Pencil } from 'lucide-react';
+import { warehouseAddress } from '../../lib/warehouse';
 import { Warehouse, Product } from '../../types';
 import { NumberInput } from '../ui/NumberInput';
 import { cn } from '../../lib/utils';
@@ -27,6 +29,9 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onU
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newWarehouse, setNewWarehouse] = useState({ name: '', location: '' });
+  const [editingWarehouseId, setEditingWarehouseId] = useState<string | null>(null);
+  const [warehouseError, setWarehouseError] = useState('');
+  const [savingWarehouse, setSavingWarehouse] = useState(false);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string | null>('total');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -50,26 +55,33 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onU
     try {
       const data = await api.get('/api/warehouses');
       setWarehouses(data);
+      setWarehouseError('');
       if (!selectedWarehouseId) {
         setSelectedWarehouseId(TOTAL_WAREHOUSE_ID);
       }
     } catch (err) {
       console.error("Error fetching warehouses:", err);
+      setWarehouseError('Chưa tải được danh sách kho. Vui lòng tải lại.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleAddWarehouse = async () => {
-    if (!newWarehouse.name) return;
+    if (!newWarehouse.name.trim() || savingWarehouse) return;
+    setSavingWarehouse(true); setWarehouseError('');
     try {
-      await api.post('/api/warehouses', newWarehouse);
+      const payload = { name: newWarehouse.name.trim(), address: newWarehouse.location.trim() };
+      if (editingWarehouseId) await api.put(`/api/warehouses/${editingWarehouseId}`, payload);
+      else await api.post('/api/warehouses', payload);
       setShowAddModal(false);
+      setEditingWarehouseId(null);
       setNewWarehouse({ name: '', location: '' });
-      fetchWarehouses();
+      await fetchWarehouses();
     } catch (err) {
       console.error("Error adding warehouse:", err);
-    }
+      setWarehouseError(err instanceof Error ? err.message : 'Chưa lưu được kho. Vui lòng thử lại.');
+    } finally { setSavingWarehouse(false); }
   };
 
   const handleDeleteWarehouse = async (id: string) => {
@@ -80,6 +92,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onU
       fetchWarehouses();
     } catch (err) {
       console.error("Error deleting warehouse:", err);
+      setWarehouseError('Chưa xóa được kho. Vui lòng thử lại.');
     }
   };
 
@@ -114,13 +127,14 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onU
           <p className="text-slate-500 text-sm mt-1">Quản lý tồn kho và phân phối sản phẩm theo từng khu vực</p>
         </div>
         <button 
-          onClick={() => setShowAddModal(true)}
+          onClick={() => { setEditingWarehouseId(null); setNewWarehouse({ name: '', location: '' }); setWarehouseError(''); setShowAddModal(true); }}
           className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-emerald-200"
         >
           <Plus className="w-5 h-5" />
           Thêm kho mới
         </button>
       </div>
+      {warehouseError && !showAddModal && <p role="alert" className="p-3 rounded-lg bg-red-50 text-red-700">{warehouseError}</p>}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Warehouse List Sidebar */}
@@ -131,6 +145,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onU
                 <Box className="w-4 h-4" />
                 Danh sách kho ({allWarehouses.length})
               </h2>
+              <button type="button" className="text-sm text-emerald-700 mt-2" disabled={loading} onClick={() => { void fetchWarehouses(); }}><RefreshCw className="w-4 h-4 inline mr-1" />{loading ? 'Đang tải…' : 'Tải lại danh sách kho'}</button>
             </div>
             <div className="divide-y divide-slate-100">
               {allWarehouses.map((w) => (
@@ -149,7 +164,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onU
                       <div className="font-bold text-slate-800">{w.name}</div>
                       <div className="text-xs text-slate-500 flex items-center gap-1">
                         <MapPin className="w-3 h-3" />
-                        {w.location}
+                        {warehouseAddress(w) || 'Chưa có địa chỉ'}
                       </div>
                     </div>
                   </div>
@@ -158,6 +173,9 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onU
                       <div className="text-xs font-bold text-emerald-600">{w.orderCount} đơn</div>
                       <div className="text-10 text-slate-400">Đã xử lý</div>
                     </div>
+                    {w._id !== TOTAL_WAREHOUSE_ID && (
+                      <button type="button" aria-label={`Sửa kho ${w.name}`} onClick={e => { e.stopPropagation(); setEditingWarehouseId(w._id); setNewWarehouse({ name: w.name, location: warehouseAddress(w) }); setWarehouseError(''); setShowAddModal(true); }} className="p-2 text-emerald-700 hover:bg-emerald-50 rounded-lg"><Pencil className="w-4 h-4" /></button>
+                    )}
                     {w._id !== TOTAL_WAREHOUSE_ID && (
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleDeleteWarehouse(w._id); }}
@@ -183,6 +201,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onU
                     Tồn kho tại: {selectedWarehouse.name}
                   </h2>
                   <p className="text-xs text-slate-500">Điều chỉnh số lượng sản phẩm thực tế tại kho này</p>
+                  <p className="text-sm text-slate-600 mt-1"><MapPin className="w-4 h-4 inline mr-1" />{warehouseAddress(selectedWarehouse) || 'Chưa có địa chỉ'}</p>
                 </div>
                 <div className="relative w-full md:w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -274,7 +293,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onU
             <div className="p-6 border-b border-slate-100 bg-slate-50/50">
               <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
                 <Plus className="w-6 h-6 text-emerald-600" />
-                THÊM KHO HÀNG MỚI
+                {editingWarehouseId ? 'CHỈNH SỬA KHO HÀNG' : 'THÊM KHO HÀNG MỚI'}
               </h3>
             </div>
             <div className="p-6 space-y-4">
@@ -298,19 +317,22 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onU
                   onChange={e => setNewWarehouse({...newWarehouse, location: e.target.value})}
                 />
               </div>
+              {warehouseError && <p role="alert" className="text-red-700">{warehouseError}</p>}
             </div>
             <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-3">
               <button 
+                disabled={savingWarehouse}
                 onClick={() => setShowAddModal(false)}
                 className="flex-1 px-6 py-3 rounded-2xl font-bold text-slate-600 hover:bg-slate-200 transition-all"
               >
                 Hủy bỏ
               </button>
               <button 
+                disabled={savingWarehouse || !newWarehouse.name.trim()}
                 onClick={handleAddWarehouse}
                 className="flex-1 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold shadow-lg shadow-emerald-200 transition-all"
               >
-                Tạo kho ngay
+                {savingWarehouse ? 'Đang lưu…' : editingWarehouseId ? 'Lưu thay đổi' : 'Tạo kho ngay'}
               </button>
             </div>
           </div>

@@ -9,9 +9,11 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "test:stock-issue": "tsx --test scripts/stockIssue.test.ts scripts/stockIssuePricing.test.ts scripts/stockIssueDisplay.test.tsx",
+    "test:stock-issue": "tsx --test scripts/stockIssue.test.ts scripts/stockIssuePricing.test.ts scripts/stockIssueDisplay.test.tsx scripts/stockIssueDrafts.test.ts",
     "demo:stock-issue": "tsx scripts/previewStockIssue.ts",
     "appsheet:setup": "tsx scripts/setupAppSheet.ts",
+    "customers:import": "tsx scripts/importCustomers.ts",
+    "test:customers-import": "tsx --test scripts/customerImport.test.ts",
     "test:appsheet": "tsx --test scripts/appSheetBridge.test.ts"
   },
   "dependencies": {
