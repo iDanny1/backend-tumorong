@@ -34,7 +34,8 @@ export const Login: React.FC<LoginProps> = ({ loginForm, setLoginForm, onLogin }
             <input 
               type="text" 
               className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-              placeholder="admin"
+              placeholder="Tên đăng nhập"
+              autoComplete="username"
               value={loginForm.username}
               onChange={e => setLoginForm({...loginForm, username: e.target.value})}
             />
@@ -44,7 +45,8 @@ export const Login: React.FC<LoginProps> = ({ loginForm, setLoginForm, onLogin }
             <input 
               type="password" 
               className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-              placeholder="123"
+              placeholder="Mật khẩu"
+              autoComplete="current-password"
               value={loginForm.password}
               onChange={e => setLoginForm({...loginForm, password: e.target.value})}
             />
@@ -53,9 +55,6 @@ export const Login: React.FC<LoginProps> = ({ loginForm, setLoginForm, onLogin }
             Đăng nhập hệ thống
           </button>
         </form>
-        <p className="text-center text-slate-400 text-xs mt-6">
-          Tài khoản mặc định: admin / 123
-        </p>
       </div>
     </div>
   );

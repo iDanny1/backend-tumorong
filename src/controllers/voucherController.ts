@@ -98,7 +98,7 @@ export async function getPublicVouchers(req: Request, res: Response): Promise<vo
       data: vouchers.map(v => sanitizeForPublic(v as any)),
     });
   } catch (err: any) {
-    console.error('[getPublicVouchers]', err);
+    console.error('[getPublicVouchers]');
     res.status(500).json({ success: false, message: 'Lỗi server' });
   }
 }
@@ -233,7 +233,7 @@ export async function applyVoucher(req: Request, res: Response): Promise<void> {
       },
     });
   } catch (err: any) {
-    console.error('[applyVoucher]', err);
+    console.error('[applyVoucher]');
     res.status(500).json({ success: false, message: 'Lỗi server' });
   }
 }
@@ -270,7 +270,7 @@ export async function confirmVoucherUsage(req: Request, res: Response): Promise<
 
     res.json({ success: true, message: 'Ghi nhận sử dụng voucher thành công' });
   } catch (err: any) {
-    console.error('[confirmVoucherUsage]', err);
+    console.error('[confirmVoucherUsage]');
     res.status(500).json({ success: false, message: 'Lỗi server' });
   }
 }
@@ -304,7 +304,7 @@ export async function adminListVouchers(req: Request, res: Response): Promise<vo
       },
     });
   } catch (err: any) {
-    console.error('[adminListVouchers]', err);
+    console.error('[adminListVouchers]');
     res.status(500).json({ success: false, message: 'Lỗi server' });
   }
 }
@@ -324,7 +324,7 @@ export async function adminCreateVoucher(req: Request, res: Response): Promise<v
     if (err.code === 11000) {
       res.status(409).json({ success: false, message: 'Mã voucher đã tồn tại' });
     } else {
-      console.error('[adminCreateVoucher]', err);
+      console.error('[adminCreateVoucher]');
       res.status(500).json({ success: false, message: 'Lỗi server' });
     }
   }
@@ -346,7 +346,7 @@ export async function adminUpdateVoucher(req: Request, res: Response): Promise<v
     }
     res.json({ success: true, data: updated });
   } catch (err: any) {
-    console.error('[adminUpdateVoucher]', err);
+    console.error('[adminUpdateVoucher]');
     res.status(500).json({ success: false, message: 'Lỗi server' });
   }
 }
@@ -363,7 +363,7 @@ export async function adminDeleteVoucher(req: Request, res: Response): Promise<v
     }
     res.json({ success: true, message: 'Xóa thành công' });
   } catch (err: any) {
-    console.error('[adminDeleteVoucher]', err);
+    console.error('[adminDeleteVoucher]');
     res.status(500).json({ success: false, message: 'Lỗi server' });
   }
 }

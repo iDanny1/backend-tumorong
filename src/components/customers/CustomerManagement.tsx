@@ -14,7 +14,7 @@ import {
 import { Customer } from '../../types';
 import { cn } from '../../lib/utils';
 import { format } from 'date-fns';
-import { api } from '../../lib/api';
+import { api, apiFetch } from '../../lib/api';
 
 interface CustomerManagementProps {
   customers: Customer[];
@@ -45,8 +45,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
 
   const handleExport = async () => {
     try {
-      const baseUrl = (import.meta as any).env.VITE_API_URL || '';
-      const response = await fetch(`${baseUrl}/api/customers/export`);
+      const response = await apiFetch('/api/customers/export');
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -66,8 +65,7 @@ export const CustomerManagement: React.FC<CustomerManagementProps> = ({
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const baseUrl = (import.meta as any).env.VITE_API_URL || '';
-      const response = await fetch(`${baseUrl}/api/customers/import`, {
+      const response = await apiFetch('/api/customers/import', {
         method: 'POST',
         body: formData
       });

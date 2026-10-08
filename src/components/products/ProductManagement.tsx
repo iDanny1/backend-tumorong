@@ -1,3 +1,4 @@
+import { apiFetch } from '../../lib/api';
 import React, { useState } from 'react';
 import { Plus, Pencil, RotateCcw, Filter, Trash2, Search, Download, Upload } from 'lucide-react';
 import { Product } from '../../types';
@@ -24,8 +25,7 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
 
   const handleExport = async () => {
     try {
-      const baseUrl = (import.meta as any).env.VITE_API_URL || '';
-      const response = await fetch(`${baseUrl}/api/products/export`);
+      const response = await apiFetch('/api/products/export');
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -45,8 +45,7 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const baseUrl = (import.meta as any).env.VITE_API_URL || '';
-      const response = await fetch(`${baseUrl}/api/products/import`, {
+      const response = await apiFetch('/api/products/import', {
         method: 'POST',
         body: formData
       });

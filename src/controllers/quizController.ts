@@ -56,7 +56,7 @@ export async function getDailyQuiz(req: Request, res: Response) {
       },
     });
   } catch (err: any) {
-    console.error('[getDailyQuiz] error:', err);
+    console.error('[getDailyQuiz] error:');
     return res.status(500).json({ success: false, message: 'Lỗi server khi tải câu hỏi hôm nay' });
   }
 }
@@ -127,7 +127,7 @@ export async function submitQuiz(req: Request, res: Response) {
       },
     });
   } catch (err: any) {
-    console.error('[submitQuiz] error:', err);
+    console.error('[submitQuiz] error:');
     return res.status(500).json({ success: false, message: 'Lỗi server khi chấm điểm câu hỏi' });
   }
 }
@@ -166,8 +166,8 @@ export async function adminUpsertQuiz(req: Request, res: Response) {
     });
     return res.json({ success: true, message: `Đã tạo mới câu hỏi ngày ${dayNum} thành công` });
   } catch (err: any) {
-    console.error('[adminUpsertQuiz] error:', err);
-    return res.status(500).json({ success: false, message: err.message || 'Lỗi server khi lưu câu hỏi admin' });
+    console.error('[adminUpsertQuiz] error:');
+    return res.status(500).json({ success: false, message: 'Lỗi server khi lưu câu hỏi admin' });
   }
 }
 
@@ -184,8 +184,8 @@ export async function adminDeleteQuiz(req: Request, res: Response) {
     }
     return res.json({ success: true, message: `Đã xóa câu hỏi ngày ${dayNum} thành công` });
   } catch (err: any) {
-    console.error('[adminDeleteQuiz] error:', err);
-    return res.status(500).json({ success: false, message: err.message || 'Lỗi server khi xóa câu hỏi admin' });
+    console.error('[adminDeleteQuiz] error:');
+    return res.status(500).json({ success: false, message: 'Lỗi server khi xóa câu hỏi admin' });
   }
 }
 

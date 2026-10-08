@@ -26,7 +26,7 @@ import { ShippingManagement } from './components/shipping/ShippingManagement';
 import { Login } from './components/auth/Login';
 import { CustomerUI } from './components/CustomerUI';
 import { Order, User, Category, Product, Customer } from './types';
-import { api } from './lib/api';
+import { api, ApiError } from './lib/api';
 import { StockIssueManagement } from './components/stock-issues/StockIssueManagement';
 
 export default function App() {
@@ -77,35 +77,30 @@ export default function App() {
   });
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('admin_user');
-    if (savedUser && savedUser !== 'null') {
-      try {
-        const parsedUser = JSON.parse(savedUser);
-        if (parsedUser && typeof parsedUser === 'object') {
-          setUser(parsedUser);
-          setIsLoggedIn(true);
-        } else {
-          localStorage.removeItem('admin_user');
-        }
-      } catch (e) {
-        localStorage.removeItem('admin_user');
-      }
-    }
-    setLoading(false);
+    localStorage.removeItem('admin_user');
+    let mounted = true;
+    api.get('/api/auth/me').then(profile => {
+      if (!mounted) return;
+      setUser(profile); setIsLoggedIn(true);
+      if (profile.role === 'warehouse') setActiveMenu('Quản lý kho');
+    }).catch(() => {}).finally(() => { if (mounted) setLoading(false); });
+    const expired = () => { setUser(null); setIsLoggedIn(false); };
+    window.addEventListener('admin-session-expired', expired);
+    return () => { mounted = false; window.removeEventListener('admin-session-expired', expired); };
   }, []);
 
   useEffect(() => {
     if (isLoggedIn) {
-      fetchOrders();
+      if (user?.role !== 'warehouse') fetchOrders();
       fetchProducts();
       fetchCategories();
       fetchCustomers();
 
       // Poll for new orders every 30 seconds
-      const interval = setInterval(fetchOrders, 30000);
+      const interval = user?.role !== 'warehouse' ? setInterval(fetchOrders, 30000) : undefined;
       return () => clearInterval(interval);
     }
-  }, [isLoggedIn]);
+  }, [isLoggedIn, user?.role]);
 
   const fetchCustomers = async () => {
     try {
@@ -132,7 +127,7 @@ export default function App() {
       setOrders(data);
     } catch (err) {
       console.error("Error fetching orders:", err);
-      if (retries > 0) {
+      if (retries > 0 && !(err instanceof ApiError && [401, 403].includes(err.status))) {
         console.log(`Retrying fetch orders... (${retries} attempts left)`);
         setTimeout(() => fetchOrders(retries - 1), 2000);
       }
@@ -159,12 +154,11 @@ export default function App() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      console.log('Sending login request...', loginForm);
       const userData = await api.post('/api/login', loginForm);
       
       setUser(userData);
       setIsLoggedIn(true);
-      localStorage.setItem('admin_user', JSON.stringify(userData));
+      setLoginForm({ username: '', password: '' });
       // Chuyển hướng theo role
       if (userData.role === 'warehouse') {
         setActiveMenu('Quản lý kho');
@@ -177,10 +171,12 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
-    setUser(null);
-    setIsLoggedIn(false);
-    localStorage.removeItem('admin_user');
+  const handleLogout = async () => {
+    try {
+      await api.post('/api/auth/logout');
+      setUser(null); setIsLoggedIn(false);
+      localStorage.removeItem('admin_user');
+    } catch (error: any) { alert(error.message || 'Chưa đăng xuất được. Vui lòng thử lại.'); }
   };
 
   const handleAddProduct = async (e: React.FormEvent) => {

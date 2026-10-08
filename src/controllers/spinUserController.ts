@@ -37,7 +37,8 @@ export function normalizePhone(rawPhone: string): string {
 
 // Helper kiểm tra user test
 export function isTestSpinUser(user?: any, phoneOrZaloId?: string): boolean {
-  const testPhones = (process.env.TEST_PHONES || '0974543740').split(',').map(p => p.trim());
+  if (process.env.NODE_ENV === 'production') return false;
+  const testPhones = (process.env.TEST_PHONES || '').split(',').map(p => p.trim()).filter(Boolean);
   if (user?.phone && testPhones.includes(user.phone)) return true;
   if (phoneOrZaloId && testPhones.includes(phoneOrZaloId)) return true;
   return false;
@@ -129,7 +130,7 @@ export async function getSpinInfo(req: Request, res: Response): Promise<void> {
       },
     });
   } catch (err: any) {
-    console.error('[getSpinInfo]', err);
+    console.error('[getSpinInfo]');
     res.status(500).json({ success: false, message: 'Lỗi server' });
   }
 }
@@ -160,7 +161,7 @@ export async function registerParticipant(req: Request, res: Response): Promise<
           phone = normalizePhone(data.data.number);
         }
       } catch (tokenErr) {
-        console.warn('[registerParticipant] Lỗi giải mã Zalo token:', tokenErr);
+        console.warn('[registerParticipant] Lỗi giải mã Zalo token:');
       }
     }
 
@@ -275,7 +276,7 @@ export async function registerParticipant(req: Request, res: Response): Promise<
       },
     });
   } catch (err: any) {
-    console.error('[registerParticipant]', err);
+    console.error('[registerParticipant]');
     res.status(500).json({ success: false, message: 'Lỗi server khi đăng ký người chơi' });
   }
 }
@@ -310,7 +311,7 @@ export async function getQuiz(req: Request, res: Response): Promise<void> {
       },
     });
   } catch (err: any) {
-    console.error('[getQuiz]', err);
+    console.error('[getQuiz]');
     res.status(500).json({ success: false, message: 'Lỗi khi tải câu hỏi' });
   }
 }
@@ -405,7 +406,7 @@ export async function submitQuiz(req: Request, res: Response): Promise<void> {
       });
     }
   } catch (err: any) {
-    console.error('[submitQuiz]', err);
+    console.error('[submitQuiz]');
     res.status(500).json({ success: false, message: 'Lỗi chấm điểm câu hỏi' });
   }
 }

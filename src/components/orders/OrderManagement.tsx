@@ -1,3 +1,4 @@
+import { apiFetch } from '../../lib/api';
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Search, 
@@ -246,8 +247,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const baseUrl = (import.meta as any).env.VITE_API_URL || '';
-      const response = await fetch(`${baseUrl}/api/orders/import`, {
+      const response = await apiFetch('/api/orders/import', {
         method: 'POST',
         body: formData
       });

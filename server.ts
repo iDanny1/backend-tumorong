@@ -19,16 +19,24 @@ import cors from 'cors';
 import multer from 'multer';
 import * as xlsx from 'xlsx';
 import bcrypt from 'bcryptjs';
+import helmet from 'helmet';
+import { securityConfig } from './src/security/config.js';
+import { installAdminSecurity, signInAdmin, staffProfile } from './src/security/admin.js';
+import { validateBody, loginInput, staffInput, staffUpdateInput, customerInput } from './src/security/validation.js';
+import { loginLimiter } from './src/security/loginLimit.js';
 
 const SALT_ROUNDS = 10;
 
 // Configure multer for memory storage (for Excel uploads)
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 0, parts: 1 },
+  fileFilter: (_req, file, done) => done(null, /\.(xlsx|xls)$/i.test(file.originalname)) });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.set('case sensitive routing', true);
+app.disable('x-powered-by');
 
 // ========================
 // MONGOOSE SCHEMAS & MODELS
@@ -255,7 +263,7 @@ async function syncOrderInventory(orderDoc: any, newStatus?: string) {
       console.log(`🎟️ Đã hoàn trả lượt sử dụng voucher ${code} cho đơn hàng bị hủy ${orderDoc.orderCode || orderDoc._id}`);
     }
   } catch (err) {
-    console.error("❌ Lỗi khi đồng bộ tồn kho đơn hàng:", err);
+    console.error("❌ Lỗi khi đồng bộ tồn kho đơn hàng:");
   }
 }
 
@@ -272,7 +280,7 @@ interface IUser extends Document {
 }
 const userSchema = new Schema<IUser>({
   username: { type: String, unique: true },
-  password: String,
+  password: { type: String, select: false },
   name: String,
   role: String,
   email: String,
@@ -450,21 +458,6 @@ async function seedData() {
       ]);
     }
 
-    // Seed Staff/Users
-    const userCount = await User.countDocuments();
-    if (userCount === 0) {
-      console.log('Seeding default staff accounts...');
-      const webmasterHash = await bcrypt.hash('tumorong88', SALT_ROUNDS);
-      const khoHash = await bcrypt.hash('123', SALT_ROUNDS);
-      const saleHash = await bcrypt.hash('123', SALT_ROUNDS);
-      await User.insertMany([
-        { username: 'webmaster', password: webmasterHash, name: 'Webmaster', role: 'admin', active: true },
-        { username: 'kho01', password: khoHash, name: 'Nhân viên kho 01', role: 'warehouse', active: true },
-        { username: 'sale01', password: saleHash, name: 'Nhân viên bán hàng 01', role: 'sales', active: true }
-      ]);
-      console.log('Staff accounts seeded.');
-    }
-
     // Seed Articles
     const articleCount = await Article.countDocuments();
     if (articleCount === 0) {
@@ -574,7 +567,7 @@ async function seedData() {
 
     console.log('✅ Database seeding complete.');
   } catch (err) {
-    console.error('❌ Seeding error:', err);
+    console.error('❌ Seeding error:');
   }
 }
 
@@ -583,7 +576,7 @@ async function seedData() {
 // ========================
 async function migratePasswords() {
   try {
-    const users = await User.find({});
+    const users = await User.find({}).select('+password');
     let migrated = 0;
     for (const u of users) {
       // Nếu password chưa phải bcrypt hash (không bắt đầu bằng $2)
@@ -593,23 +586,11 @@ async function migratePasswords() {
         migrated++;
       }
     }
-    // Đổi username 'admin' → 'webmaster' nếu vẫn còn tồn tại
-    const oldAdmin = await User.findOne({ username: 'admin' });
-    if (oldAdmin) {
-      const webmasterExists = await User.findOne({ username: 'webmaster' });
-      if (!webmasterExists) {
-        oldAdmin.username = 'webmaster';
-        oldAdmin.password = await bcrypt.hash('tumorong88', SALT_ROUNDS);
-        oldAdmin.name = 'Webmaster';
-        await oldAdmin.save();
-        console.log('✅ Đã đổi tài khoản admin → webmaster');
-      }
-    }
     if (migrated > 0) {
       console.log(`✅ Đã mã hóa ${migrated} mật khẩu cũ.`);
     }
   } catch (err) {
-    console.error('❌ Migration error:', err);
+    console.error('❌ Migration error:');
   }
 }
 
@@ -617,30 +598,32 @@ async function migratePasswords() {
 // SERVER STARTUP
 // ========================
 async function startServer() {
+  const config = securityConfig();
+  if (config.production && !process.env.MONGODB_URI) throw new Error('MONGODB_URI chưa được cấu hình.');
   const PORT = process.env.PORT || 8080;
   const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/tumorong';
 
   // Connect to MongoDB
   try {
     await mongoose.connect(MONGODB_URI);
-    console.log('✅ Connected to MongoDB:', MONGODB_URI.replace(/:\/\/([^:]+):([^@]+)@/, '://***:***@'));
+    console.log('✅ Connected to MongoDB.');
   } catch (err) {
-    console.error('❌ MongoDB connection failed:', err);
+    console.error('❌ MongoDB connection failed:');
     process.exit(1);
   }
 
   await prepareCustomerIndexes();
 
   // Seed data
-  await seedData();
+  if (!config.production) await seedData();
 
-  // Migrate passwords & rename legacy admin account
-  await migratePasswords();
+  // Development-only legacy migration; production credentials are rotated explicitly.
+  if (!config.production) await migratePasswords();
 
   // Config
-  const GHN_TOKEN = process.env.GHN_TOKEN || "c0e79cba-3ef4-11f1-9107-4a16704feeb7";
-  const GHN_SHOP_ID = process.env.GHN_SHOP_ID || "5945053";
-  const ZALO_SECRET_KEY = process.env.ZALO_SECRET_KEY || "G8yOT6fT2I7xOc6mV4Jw";
+  const GHN_TOKEN = process.env.GHN_TOKEN || '';
+  const GHN_SHOP_ID = process.env.GHN_SHOP_ID || '';
+  const ZALO_SECRET_KEY = process.env.ZALO_SECRET_KEY || '';
 
   // Middleware
   // Whitelist domain Zalo Mini App + mọi origin cho API public
@@ -658,16 +641,18 @@ async function startServer() {
       const isAllowed = allowedOrigins.some(o =>
         typeof o === 'string' ? o === origin : o.test(origin)
       );
-      callback(null, isAllowed ? origin : '*');
+      callback(null, isAllowed || config.origins.has(origin) ? origin : false);
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'access_token', 'x-zalo-id'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'access_token', 'x-zalo-id', 'X-CSRF-Token'],
     credentials: true
   }));
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+  app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+  app.use(express.json({ limit: '256kb' }));
+  app.use(express.urlencoded({ extended: false, limit: '64kb' }));
+  installAdminSecurity(app, User, config);
   app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
     next();
   });
 
@@ -683,98 +668,6 @@ async function startServer() {
   // ========================
   app.use('/api/spin', spinRouter);
 
-  // Ghi nhận thông tin khách hàng từ vòng quay may mắn
-  app.post('/api/spin/register-customer', async (req, res) => {
-    try {
-      const { zaloId, name, phoneToken, accessToken, phone: directPhone } = req.body;
-      let phone = directPhone ? String(directPhone).trim() : '';
-
-      // Giải mã SĐT từ Zalo nếu có token
-      if (!phone && phoneToken && accessToken && ZALO_SECRET_KEY) {
-        const response = await fetch('https://graph.zalo.me/v2.0/me/info', {
-          headers: { 'access_token': accessToken, 'code': phoneToken, 'secret_key': ZALO_SECRET_KEY }
-        });
-        const data = await response.json();
-        if (data && data.data && data.data.number) {
-          phone = String(data.data.number).trim();
-        }
-      }
-
-      // Chuẩn hóa định dạng SĐT (84xxx -> 0xxx)
-      if (phone.startsWith('84')) {
-        phone = '0' + phone.slice(2);
-      } else if (phone.startsWith('+84')) {
-        phone = '0' + phone.slice(3);
-      }
-      phone = phone.replace(/[^0-9]/g, '');
-
-      if (!phone || phone.length < 9) {
-        return res.status(400).json({ success: false, message: 'Không thể xác định số điện thoại hợp lệ.' });
-      }
-
-      const customerName = name?.trim() || 'Khách Vòng Quay';
-      const testPhones = (process.env.TEST_PHONES || '0974543740').split(',').map(p => p.trim());
-      const isTest = testPhones.includes(phone);
-
-      // 1. Upsert vào bảng Customer (Hiển thị ngay trong mục Khách Hàng của Admin)
-      let customer = await Customer.findOne({ phone });
-      if (customer) {
-        if (name && customer.name === 'Khách Vòng Quay') {
-          customer.name = customerName;
-        }
-        if (!customer.tags) customer.tags = [];
-        if (!customer.tags.includes('Vòng quay may mắn')) {
-          customer.tags.push('Vòng quay may mắn');
-        }
-        customer.lastAccess = new Date().toISOString();
-        await customer.save();
-      } else {
-        customer = await Customer.create({
-          name: customerName,
-          phone,
-          address: '',
-          type: 'retail',
-          tags: ['Vòng quay may mắn'],
-          lastAccess: new Date().toISOString(),
-          createdAt: new Date().toISOString()
-        });
-      }
-
-      // 2. Cập nhật vào SpinUser để liên kết Zalo ID với SĐT & Tên
-      if (zaloId) {
-        await SpinUser.findOneAndUpdate(
-          { zaloId },
-          {
-            $set: {
-              phone,
-              name: customerName,
-              isTestUser: isTest,
-              ...(isTest ? { spinsLeft: 999 } : {})
-            }
-          },
-          { upsert: true }
-        );
-      }
-
-      console.log(`[Spin Customer] Đã lưu khách hàng quay voucher: ${customerName} (${phone}) - Test: ${isTest}`);
-
-      res.json({
-        success: true,
-        message: 'Đã lưu thông tin khách hàng thành công',
-        data: {
-          phone,
-          name: customer.name,
-          isTestUser: isTest
-        }
-      });
-    } catch (err) {
-      console.error('[register-customer]', err);
-      res.status(500).json({ success: false, error: String(err) });
-    }
-  });
-  // ========================
-  // 🏷️ VOUCHER NÂNG CAO v2
-  // ========================
   app.use('/api/vouchers-v2', advancedVoucherRouter);
   app.use('/api/stock-issues', stockIssueRouter);
 
@@ -791,7 +684,7 @@ async function startServer() {
       const docs = await Product.find(filter).sort({ isFeatured: -1, createdAt: -1 });
       res.json(docs);
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
     }
   });
 
@@ -801,7 +694,7 @@ async function startServer() {
       const saved = await product.save();
       res.json(saved);
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
     }
   });
 
@@ -810,7 +703,7 @@ async function startServer() {
       await Product.findByIdAndUpdate(req.params.id, { $set: req.body });
       res.json({ success: true });
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
     }
   });
 
@@ -819,7 +712,7 @@ async function startServer() {
       await Product.findByIdAndDelete(req.params.id);
       res.json({ success: true });
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
     }
   });
 
@@ -829,7 +722,7 @@ async function startServer() {
       await Product.findByIdAndUpdate(req.params.id, { $set: { warehouseStock, stock } });
       res.json({ success: true });
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
     }
   });
 
@@ -848,7 +741,7 @@ async function startServer() {
       const docs = await Order.find(filter).sort({ createdAt: -1 });
       res.json(docs);
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
     }
   });
 
@@ -914,7 +807,7 @@ async function startServer() {
         paymentMethod: paymentMethod || 'cod',
         invoice: invoice || null,
         status: 'pending',         // mặc định: chờ xử lý
-        paymentStatus: (paymentMethod === 'cod') ? 'Chưa thanh toán' : 'Đã thanh toán',
+        paymentStatus: 'Chưa thanh toán', // Only a verified payment event or authorized staff can mark paid.
         platform: 'Zalo Mini App',
         voucherCode: voucherCode || '',
         discountAmount: Number(discountAmount) || 0,
@@ -933,7 +826,7 @@ async function startServer() {
         await AdvancedVoucher.findOneAndUpdate(
           { code },
           { $inc: { usedCount: 1 } }
-        ).catch(err => console.error("Lỗi update AdvancedVoucher:", err));
+        ).catch(err => console.error("Lỗi update AdvancedVoucher:"));
 
         // 2. Cập nhật lượt sử dụng của từng User (UserVoucherUsage)
         const targetUserId = (req.body.userId || resolvedPhone || '').trim();
@@ -942,14 +835,14 @@ async function startServer() {
             { userId: targetUserId, voucherCode: code },
             { $inc: { usedCount: 1 }, $set: { lastUsedAt: new Date() } },
             { upsert: true, new: true }
-          ).catch(err => console.error("Lỗi update UserVoucherUsage:", err));
+          ).catch(err => console.error("Lỗi update UserVoucherUsage:"));
         }
 
         // 3. Cập nhật legacy Voucher model
         await Voucher.findOneAndUpdate(
           { code },
           { $inc: { usedCount: 1 } }
-        ).catch(err => console.error("Lỗi update legacy Voucher:", err));
+        ).catch(err => console.error("Lỗi update legacy Voucher:"));
       }
 
       // ── TỰ ĐỘNG LƯU / CẬP NHẬT KHÁCH HÀNG ─────────────────────────────────
@@ -978,7 +871,7 @@ async function startServer() {
       // ── TẠO CHỮ KÝ ZALO PAYMENT (HMAC-SHA256) ──────────────────────────────
       // Bắt buộc theo yêu cầu Zalo: dùng cho Payment.createOrder phía Mini App
       let mac: string | undefined;
-      const ZALO_PRIVATE_KEY = process.env.ZALO_PRIVATE_KEY || "6cdea014057b31f83d084e914c12ab2a";
+      const ZALO_PRIVATE_KEY = process.env.ZALO_PRIVATE_KEY || '';
       if (ZALO_PRIVATE_KEY) {
         try {
           const macData: Record<string, string> = {
@@ -991,9 +884,8 @@ async function startServer() {
           // Zalo yêu cầu sắp xếp key A→Z, nối key=value&...
           const dataString = Object.keys(macData).sort().map(k => `${k}=${macData[k]}`).join('&');
           mac = crypto.createHmac('sha256', ZALO_PRIVATE_KEY).update(dataString).digest('hex');
-          console.log(`🔐 MAC đã tạo cho đơn ${orderCode}: ${mac}`);
         } catch (macErr) {
-          console.error('⚠️ Lỗi tạo MAC Zalo Payment:', macErr);
+          console.error('⚠️ Lỗi tạo MAC Zalo Payment:');
         }
       } else {
         console.error('❌ ZALO_PRIVATE_KEY chưa được cấu hình — MAC không được tạo!');
@@ -1007,7 +899,7 @@ async function startServer() {
         message: 'Đặt hàng thành công'
       });
     } catch (err) {
-      console.error('❌ Lỗi tạo đơn hàng:', err);
+      console.error('❌ Lỗi tạo đơn hàng:');
       return res.status(500).json({ success: false, message: 'Không thể lưu đơn hàng, vui lòng thử lại' });
     }
   });
@@ -1026,7 +918,7 @@ async function startServer() {
       if (!doc) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
       res.json(doc);
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
     }
   });
 
@@ -1055,7 +947,7 @@ async function startServer() {
       await syncOrderInventory(doc, doc.status);
       res.json({ success: true, data: doc });
     } catch (err) {
-      res.status(500).json({ success: false, message: String(err) });
+      res.status(500).json({ success: false, message: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
     }
   });
 
@@ -1072,7 +964,7 @@ async function startServer() {
       }
       res.json({ success: true });
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
     }
   });
 
@@ -1176,14 +1068,14 @@ async function startServer() {
   app.get('/api/staff', async (req, res) => {
     try {
       const users = await User.find({}).sort({ createdAt: -1 });
-      res.json(users);
+      res.json(users.map(staffProfile));
     } catch (err) {
-      console.error('CRITICAL: Error fetching staff:', err);
+      console.error('CRITICAL: Error fetching staff:');
       res.status(500).json({ error: 'Lỗi tải danh sách nhân viên' });
     }
   });
 
-  app.post('/api/staff', async (req, res) => {
+  app.post('/api/staff', validateBody(staffInput), async (req, res) => {
     try {
       const { username, password, name, role, email, phone, active } = req.body;
       if (!username || !password) {
@@ -1206,17 +1098,21 @@ async function startServer() {
         active: active !== undefined ? active : true,
         createdAt: new Date().toISOString()
       });
-      res.status(201).json(newUser);
+      res.status(201).json(staffProfile(newUser));
     } catch (err) {
-      console.error('Error creating staff:', err);
+      console.error('Error creating staff:');
       res.status(500).json({ error: 'Lỗi khi tạo nhân viên' });
     }
   });
 
-  app.put('/api/staff/:id', async (req, res) => {
+  app.put('/api/staff/:id', validateBody(staffUpdateInput), async (req, res) => {
     try {
       const { password, name, role, email, phone, active } = req.body;
-      const updateData: any = { name, role, email, phone, active };
+      const target = await User.findById(req.params.id);
+      if (!target) return res.status(404).json({ message: 'Không tìm thấy nhân viên.' });
+      if (target.role === 'admin' && ((role !== undefined && role !== 'admin') || active === false)) return res.status(400).json({ message: 'Không thể hạ quyền hoặc khóa tài khoản quản trị cuối cùng.' });
+      const updateData: any = {};
+      for (const [key, value] of Object.entries({ name, role, email, phone, active })) if (value !== undefined) updateData[key] = value;
       // Nếu đang đổi role sang admin, kiểm tra không có admin nào khác
       if (role === 'admin') {
         const existingAdmin = await User.findOne({ role: 'admin', _id: { $ne: req.params.id } });
@@ -1247,27 +1143,23 @@ async function startServer() {
   });
 
   // --- AUTH ---
-  app.post('/api/login', async (req, res) => {
+  app.post('/api/login', validateBody(loginInput), loginLimiter(), async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: 'Vui lòng nhập tài khoản và mật khẩu' });
     }
     try {
-      console.log(`[${new Date().toISOString()}] Login attempt: "${username}"`);
-      const user = await User.findOne({ username, active: true });
+      const user = await User.findOne({ username, active: true }).select('+password');
       if (!user) {
-        console.warn(`Login failed (not found): "${username}"`);
         return res.status(401).json({ error: 'Sai tài khoản hoặc mật khẩu' });
       }
       const passwordMatch = await bcrypt.compare(password, user.password);
       if (!passwordMatch) {
-        console.warn(`Login failed (wrong password): "${username}"`);
         return res.status(401).json({ error: 'Sai tài khoản hoặc mật khẩu' });
       }
-      console.log(`Login successful: "${username}" (role: ${user.role})`);
       // Trả về thông tin user nhưng không trả password
-      const { password: _pwd, ...userSafe } = user.toObject();
-      res.json(userSafe);
+      await signInAdmin(req, user);
+      res.json(staffProfile(user));
     } catch (err) {
       res.status(500).json({ error: 'Lỗi cơ sở dữ liệu hệ thống' });
     }
@@ -1471,6 +1363,7 @@ async function startServer() {
   };
 
   app.post('/api/ghn/create-order', async (req, res) => {
+    if (!GHN_TOKEN || !GHN_SHOP_ID) return res.status(503).json({ message: 'Chưa cấu hình vận chuyển.' });
     try {
       const response = await fetch('https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/create', {
         method: 'POST',
@@ -1482,6 +1375,7 @@ async function startServer() {
   });
 
   app.get('/api/ghn/status/:order_code', async (req, res) => {
+    if (!GHN_TOKEN) return res.status(503).json({ message: 'Chưa cấu hình vận chuyển.' });
     try {
       const response = await fetch('https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/detail', {
         method: 'POST',
@@ -1502,6 +1396,8 @@ async function startServer() {
 
   // --- ZALO ---
   app.post('/api/zalo/phone', async (req, res) => {
+    if (!ZALO_SECRET_KEY) return res.status(503).json({ message: 'Chưa cấu hình Zalo.' });
+    if (typeof req.body.phoneToken !== 'string' || typeof req.body.accessToken !== 'string' || req.body.phoneToken.length > 4096 || req.body.accessToken.length > 4096) return res.status(400).json({ message: 'Token không hợp lệ.' });
     try {
       const { phoneToken, accessToken } = req.body;
       const response = await fetch('https://graph.zalo.me/v2.0/me/info', {
@@ -1512,42 +1408,12 @@ async function startServer() {
   });
 
   // Webhook nhận sự kiện từ Zalo Mini App (Xóa dữ liệu, Rút quyền...)
-  app.post('/api/zalo-webhook', async (req, res) => {
-    try {
-      console.log('🔔 Zalo Webhook received:', req.body);
-      
-      // Payload mẫu của Zalo: { app_id, event_name, sender: { id: "..." }, ... }
-      const { event_name, sender, phone } = req.body;
-      
-      if (event_name === 'user_delete_data' || event_name === 'user_revoke_app') {
-        const zaloUserId = sender?.id;
-        console.log(`Đang xử lý yêu cầu xóa dữ liệu cho sự kiện: ${event_name}, ZaloID: ${zaloUserId}`);
-        
-        // Nếu hệ thống sau này lưu zaloId vào Customer/Order thì sẽ tìm theo zaloId để xóa
-        // Tạm thời nếu payload có số điện thoại (tùy config Zalo) thì xóa theo số điện thoại
-        if (phone) {
-          await Customer.findOneAndDelete({ phone });
-          // Xóa hoặc ẩn thông tin trên đơn hàng
-          await Order.updateMany(
-            { customerPhone: phone },
-            { $set: { customerName: 'Đã xóa dữ liệu', customerPhone: 'N/A', address: 'N/A', customer: null } }
-          );
-          console.log(`Đã xóa dữ liệu khách hàng có SĐT: ${phone}`);
-        } else if (zaloUserId) {
-          // TODO: Mở rộng logic tìm user theo zaloUserId nếu DB có field này.
-          console.log(`Đã nhận yêu cầu xóa data của Zalo ID: ${zaloUserId}.`);
-        }
-      }
-      
-      // LUÔN TRẢ VỀ 200 OK ĐỂ ZALO BIẾT ĐÃ NHẬN THÀNH CÔNG
-      res.status(200).json({ error: 0, message: "Success" });
-    } catch (e) {
-      console.error("❌ Lỗi xử lý Zalo Webhook:", e);
-      res.status(500).json({ error: "Lỗi server" });
-    }
+  // Disabled until the correct Mini App webhook signature contract is verified.
+  // Never execute a destructive request authenticated only by its supplied phone.
+  app.post('/api/zalo-webhook', (_req, res) => {
+    res.status(503).json({ error: 'Webhook chưa được cấu hình xác thực. Chưa xử lý sự kiện.' });
   });
 
-  // --- DOWNLOAD ---
   app.get('/api/download/huong-dan-quan-tri', (req, res) => {
     try {
       const filePath = path.join(__dirname, 'HUONG_DAN_QUAN_TRI.docx');
@@ -1572,18 +1438,21 @@ async function startServer() {
   app.get('/api/customers', async (req, res) => {
     try {
       const docs = await Customer.find({}).sort({ createdAt: -1 });
+      if (req.adminUser?.role === 'warehouse') {
+        return res.json(docs.map(c => ({ _id: c._id, name: c.name, phone: c.phone, address: c.address, deliveryAddress: c.deliveryAddress, type: c.type, ordersCount: 0, totalSpent: 0, remainingPoints: 0, totalPoints: 0, tags: [] })));
+      }
       res.json(docs);
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
     }
   });
 
-  app.post('/api/customers', async (req, res) => {
+  app.post('/api/customers', validateBody(customerInput.required({ name: true })), async (req, res) => {
     try {
       const newCustomer = await Customer.create(req.body);
       res.status(201).json(newCustomer);
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
     }
   });
 
@@ -1616,7 +1485,7 @@ async function startServer() {
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.send(buffer);
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
     }
   });
 
@@ -1631,7 +1500,7 @@ async function startServer() {
       const warning = result.warnings.length ? ` Có ${result.warnings.length} số điện thoại cần kiểm tra.` : '';
       res.json({ ...result, message: `Nhập thành công ${result.inserted} khách hàng mới; ${result.existing} hồ sơ đã có; bỏ qua ${result.skipped} dòng thiếu tên.${warning}` });
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
     }
   });
 
@@ -1656,7 +1525,7 @@ async function startServer() {
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.send(buffer);
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
     }
   });
 
@@ -1682,7 +1551,7 @@ async function startServer() {
       }
       res.json({ message: `Nhập thành công ${count} sản phẩm.` });
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
     }
   });
 
@@ -1714,32 +1583,37 @@ async function startServer() {
       }
       res.json({ message: `Nhập thành công ${count} đơn hàng.` });
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
     }
   });
 
   // Customer routes với wildcard /:id (phải đặt SAU /export và /import)
   app.get('/api/customers/:id', async (req, res) => {
     try {
-      const doc = await Customer.findById(req.params.id);
+      const query = Customer.findById(req.params.id);
+      if (req.adminUser?.role === 'warehouse') query.select('_id name phone address deliveryAddress type');
+      const doc = await query;
       if (!doc) return res.status(404).json({ message: "Không tìm thấy khách hàng" });
       res.json(doc);
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
     }
   });
 
-  app.put('/api/customers/:id', async (req, res) => {
+  app.put('/api/customers/:id', validateBody(customerInput), async (req, res) => {
     try {
+      if (req.adminUser?.role === 'warehouse' && Object.keys(req.body).some(key => key !== 'address')) return res.status(403).json({ message: 'Nhân viên kho chỉ được cập nhật địa chỉ giao hàng.' });
       if (req.body.address !== undefined && (typeof req.body.address !== 'string' || req.body.address.length > 1000)) {
         return res.status(400).json({ message: 'Địa chỉ khách hàng phải là văn bản, tối đa 1.000 ký tự.' });
       }
       if (typeof req.body.address === 'string') req.body.address = req.body.address.trim();
-      const updated = await Customer.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      const query = Customer.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true });
+      if (req.adminUser?.role === 'warehouse') query.select('_id name phone address deliveryAddress type');
+      const updated = await query;
       if (!updated) return res.status(404).json({ message: "Không tìm thấy khách hàng" });
       res.json(updated);
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
     }
   });
 
@@ -1749,7 +1623,7 @@ async function startServer() {
       if (!deleted) return res.status(404).json({ message: "Không tìm thấy khách hàng" });
       res.json({ message: "Xóa thành công" });
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
     }
   });
 
@@ -1759,7 +1633,7 @@ async function startServer() {
   startAppSheetSync(Customer, StockIssue);
 
   app.all('/api/*', (req, res) => {
-    res.status(404).json({ error: `Endpoint ${req.method} ${req.url} not found` });
+    res.status(404).json({ error: 'API không tồn tại.' });
   });
 
   // --- VITE MIDDLEWARE ---
@@ -1778,6 +1652,7 @@ async function startServer() {
     });
   } else {
     // Development: dùng Vite Dev Server
+    if (config.production) throw new Error('Thiếu bản build giao diện production.');
     console.log('⚡ Starting Vite dev server...');
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -1786,11 +1661,17 @@ async function startServer() {
     app.use(vite.middlewares);
   }
 
+  app.use((error: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    const status = error?.code === 'LIMIT_FILE_SIZE' || error?.type === 'entity.too.large' ? 413 : error instanceof SyntaxError || error instanceof multer.MulterError ? 400 : 500;
+    res.status(status).json({ message: status === 413 ? 'Dữ liệu vượt giới hạn cho phép.' : 'Không thể xử lý yêu cầu.' });
+  });
+
   app.listen(Number(PORT), '0.0.0.0', () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
   });
 }
 
-startServer().catch(err => {
-  console.error("Failed to start server:", err);
+startServer().catch(() => {
+  console.error('Không khởi động được: kiểm tra cấu hình và kết nối trong môi trường vận hành.');
+  process.exit(1);
 });

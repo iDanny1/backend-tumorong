@@ -178,7 +178,7 @@ export async function doSpin(req: Request, res: Response): Promise<void> {
       });
       voucherId = adv._id.toString();
     } catch (advErr) {
-      console.warn('[doSpin] AdvancedVoucher create notice:', advErr);
+      console.warn('[doSpin] AdvancedVoucher create notice:');
     }
 
     try {
@@ -193,7 +193,7 @@ export async function doSpin(req: Request, res: Response): Promise<void> {
       });
       if (!voucherId && legacy) voucherId = (legacy as any)._id?.toString() || '';
     } catch (legErr) {
-      console.warn('[doSpin] Voucher create notice:', legErr);
+      console.warn('[doSpin] Voucher create notice:');
     }
 
     // Cập nhật kết quả vào SpinUser
@@ -225,7 +225,7 @@ export async function doSpin(req: Request, res: Response): Promise<void> {
       },
     });
   } catch (err: any) {
-    console.error('[doSpin]', err);
+    console.error('[doSpin]');
     res.status(500).json({ success: false, message: 'Lỗi server khi thực hiện quay' });
   }
 }
@@ -278,7 +278,7 @@ export async function getMyVouchers(req: Request, res: Response): Promise<void> 
 
     res.json({ success: true, data: result });
   } catch (err: any) {
-    console.error('[getMyVouchers]', err);
+    console.error('[getMyVouchers]');
     res.status(500).json({ success: false, message: 'Lỗi khi tải danh sách voucher' });
   }
 }
