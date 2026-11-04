@@ -1,10 +1,12 @@
 # Bản sửa bảo mật đợt 1 — Render
 
-Ngày 08/10/2026. Đã kiểm tra dashboard dịch vụ `tumorong-miniapp` (`srv-d9c4mv1kh4rs73c2cffg`), gói Free, Node, Singapore; tên miền quản trị/API `https://miniapp.tumorong.com`. Render đang chạy commit `58ab5ab` trên nhánh `main`, tự triển khai khi có commit mới. Bản sửa bảo mật cục bộ chưa commit/push hoặc triển khai.
+Ngày 09/10/2026. Đã kiểm tra dashboard dịch vụ `tumorong-miniapp` (`srv-d9c4mv1kh4rs73c2cffg`), gói Free, Node, Singapore; tên miền quản trị/API `https://miniapp.tumorong.com`. Bản sửa bảo mật đã được người dùng đưa lên nhánh `main`, commit `5598a7b`. Lần auto-deploy ngày 08/10 thất bại ở build với `sh: 1: vite: not found`, mã thoát 127; bản live lúc bắt đầu kiểm tra vẫn là `58ab5ab`.
 
-Đã lưu bằng **Save only**: `NODE_ENV=production`, `ADMIN_ALLOWED_ORIGINS=https://miniapp.tumorong.com`, `TRUST_PROXY_HOPS=1` và bốn giá trị `ZALO_SECRET_KEY`, `ZALO_PRIVATE_KEY`, `GHN_TOKEN`, `GHN_SHOP_ID` từ `.env` theo cho phép của người dùng để dùng tạm. `MONGODB_URI` có sẵn được giữ nguyên. Việc lưu chưa kích hoạt deploy; các khóa cũ vẫn phải thay. `SESSION_SECRET` mới đang là trường trống trong biểu mẫu, chưa được lưu: người dùng cần bấm **Generate**, rồi **Save only**. Quy tắc công cụ trình duyệt yêu cầu người dùng tự tạo/nhập và lưu khóa xác thực mới.
+Đã lưu bằng **Save only** ngày 08/10: `NODE_ENV=production`, `ADMIN_ALLOWED_ORIGINS=https://miniapp.tumorong.com`, `TRUST_PROXY_HOPS=1` và bốn giá trị `ZALO_SECRET_KEY`, `ZALO_PRIVATE_KEY`, `GHN_TOKEN`, `GHN_SHOP_ID` từ `.env` theo cho phép của người dùng để dùng tạm. `MONGODB_URI` có sẵn được giữ nguyên. Các khóa cũ vẫn phải thay. Ngày 09/10 đã thấy `SESSION_SECRET` được lưu trên dashboard ở trạng thái che; không đọc hoặc ghi lại giá trị.
 
-Cấu hình lệnh thực tế hiện tại: Build `npm install --legacy-peer-deps && npm run build`, Start `npx tsx server.ts`; Health Check chưa đặt. Chưa đổi các lệnh này. Chỉ chuyển sang các lệnh đề xuất bên dưới khi repository đã có bản sửa tương ứng. Cookie và chuỗi proxy thật vẫn cần kiểm tra sau khi triển khai; sự hiện diện của biến chưa chứng minh đăng nhập hoặc tích hợp Zalo/GHN hoạt động.
+Cấu hình Build đã sửa ngày 09/10 thành `npm ci --include=dev --legacy-peer-deps && npm run build`, giữ Start `npx tsx server.ts`; Health Check chưa đặt. `NODE_ENV=production` khiến npm mặc định bỏ devDependencies; Vite và tsx cần được cài rõ ràng để build và chạy lệnh hiện tại. `npm ci` cài theo lockfile, `--legacy-peer-deps` giữ chế độ giải quyết peer dependency của lệnh cũ. Lưu Build Command đã tự kích hoạt deploy `dep-db46914s728c739ng5g0` cho commit `5598a7b`. Cookie và chuỗi proxy thật vẫn cần kiểm tra sau khi triển khai; sự hiện diện của biến chưa chứng minh đăng nhập hoặc tích hợp Zalo/GHN hoạt động.
+
+Kết quả ngày 09/10: deploy trên đã **succeeded / Live** sau 1 phút 24 giây; log xác nhận server nghe cổng `10000`. Kiểm tra HTTP không dùng cookie: `/api/health` trả 200 với `status=ok`, `db=connected`; `/api/auth/me` và `/api/customers` trả 401 “Vui lòng đăng nhập.” Không lấy dữ liệu khách hàng. Đợt sửa lỗi deploy chỉ đổi Build Command trên Render và cập nhật tài liệu; không đổi mã nghiệp vụ hoặc tạo thêm commit. Chưa kiểm tra đăng nhập tài khoản thật hoặc luồng Zalo/GHN thực tế.
 
 ## Những thay đổi đã có trong mã
 
@@ -54,7 +56,7 @@ GET sản phẩm/danh mục/tin và các endpoint hiện có cho checkout/vòng 
 
 Theo [Render Web Services](https://render.com/docs/web-services), Render kết thúc TLS ở load balancer rồi chuyển HTTP tới ứng dụng. Vì vậy cần cấu hình proxy đúng để cookie Secure được phát, và kiểm tra cả tên miền riêng lẫn địa chỉ `.onrender.com` để tránh tin header giả. Chưa có bằng chứng chuỗi proxy thật của dịch vụ này.
 
-6. Build Command: `npm ci --include=dev && npm run build`; Start Command: `npm start`; Health Check: `/api/health`. Giữ `PORT` do Render cung cấp. Thiếu SESSION_SECRET/MONGODB_URI hoặc build production, server chủ động không khởi động; kiểm tra staging trước khi deploy.
+6. Build Command: `npm ci --include=dev --legacy-peer-deps && npm run build`; Start Command hiện tại `npx tsx server.ts` hoặc `npm start`; Health Check đề xuất `/api/health`. Giữ `PORT` do Render cung cấp. Thiếu SESSION_SECRET/MONGODB_URI hoặc build production, server chủ động không khởi động; kiểm tra staging trước khi deploy.
 7. Kiểm tra đăng nhập, reload còn phiên, đổi mật khẩu mất phiên, logout, quyền sales/warehouse, tạo khách, upload/export và phiếu xuất. Xác minh cookie Secure/HttpOnly, yêu cầu không phiên bị 401, sai quyền 403, Origin ngoài danh sách bị từ chối. Thử checkout COD/chuyển khoản và SDK trong **Zalo Mini App thật** với dữ liệu thử; không coi trả 201 là bằng chứng tiền đã thanh toán.
 8. Deploy sau khi chuẩn bị bí mật/tài khoản và kiểm thử staging. Tránh rollback về mã cũ mở toàn bộ API; nếu lỗi, sửa bản mới hoặc đưa dịch vụ vào chế độ bảo trì theo khả năng của gói hosting.
 

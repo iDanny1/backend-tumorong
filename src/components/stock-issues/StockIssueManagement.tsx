@@ -157,8 +157,6 @@ export function StockIssueManagement({ products, customers, user }: Props) {
   };
   const addProduct = (product: Product) => {
     setForm(prev => {
-      const index = prev.items.findIndex(item => item.productId === product._id);
-      if (index >= 0) return { ...prev, items: prev.items.map((item, i) => i === index ? { ...item, requested: item.requested + 1, quantity: item.quantity + 1 } : item) };
       return { ...prev, items: [...prev.items, { productId: product._id, name: product.name, sku: product.sku || product.barcode || '', unit: product.unit || '', requested: 1, quantity: 1, unitPrice: product.price || 0, vatRate: -1, discount: 0, discountType: 'amount' }] };
     });
     setProductQuery(''); setError('');
@@ -255,7 +253,7 @@ export function StockIssueManagement({ products, customers, user }: Props) {
           <Field label="Tìm sản phẩm"><div className="issue-search"><Search size={19} /><input value={productQuery} onChange={event => setProductQuery(event.target.value)} placeholder="Gõ tên hàng, mã hàng hoặc mã vạch…" /></div></Field>
           {catalogError && <p role="alert" className="issue-error">{catalogError}</p>}
           {productQuery.trim() && <div className="issue-results">{matches(catalogProducts, productQuery, p => `${p.name} ${p.sku || ''} ${p.barcode || ''}`).map(product => <button type="button" key={product._id} onClick={() => addProduct(product)}><strong>{product.name}</strong><small>{product.sku || product.barcode || 'Chưa có mã'} · Giá danh mục: {money(product.price || 0)} đ{product.active === false ? ' · Đang ẩn trên cửa hàng' : ''}</small></button>)}{!matches(catalogProducts, productQuery, p => `${p.name} ${p.sku || ''} ${p.barcode || ''}`).length && <p>{catalogLoading ? 'Đang tải sản phẩm…' : 'Chưa có trong danh mục. Thử tải lại danh mục hoặc chọn “Thêm hàng bằng tay”.'}</p>}</div>}
-          <p className="issue-hint">Kiểm tra đơn vị tính, giá bán chưa VAT và thuế suất từng sản phẩm trước khi in. Chọn lại cùng sản phẩm sẽ tăng số lượng thêm 1.</p>
+          <p className="issue-hint">Kiểm tra đơn vị tính, giá bán chưa VAT và thuế suất từng sản phẩm trước khi in. Mỗi lần chọn sản phẩm sẽ thêm một dòng riêng. Với hàng tặng, đặt đơn giá của dòng đó là 0 đồng; bạn có thể chỉnh số lượng trên từng dòng.</p>
           {!form.items.length && <div className="issue-empty"><FileText size={30} /><p>Chưa có hàng trên phiếu</p><small>Tìm sản phẩm ở trên hoặc thêm hàng bằng tay.</small></div>}
           <div className="issue-lines">{form.items.map((item, index) => <section className="issue-line" key={index} aria-label={`Mặt hàng ${index + 1}`}>
             <div className="issue-section-title"><h3>Mặt hàng {index + 1}</h3><button type="button" className="issue-remove" aria-label={`Xóa mặt hàng ${index + 1}`} onClick={() => setForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }))}><Trash2 size={16} />Bỏ dòng</button></div>
