@@ -2,9 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronLeft, Copy, FileText, Plus, Printer, Search, Trash2, X } from 'lucide-react';
 import { api } from '../../lib/api';
-import { money, STOCK_ISSUE_COMPANIES, normalizeStockIssue, stockIssueAmounts, stockIssuePricing, upgradeStockIssue, type SavedStockIssue, type StockIssueData, type StockIssueLine } from '../../lib/stockIssue';
+import { money, STOCK_ISSUE_COMPANIES, normalizeStockIssue, stockIssuePricing, upgradeStockIssue, type SavedStockIssue, type StockIssueData, type StockIssueLine } from '../../lib/stockIssue';
 import type { Customer, Product, User, Warehouse } from '../../types';
 import { StockIssuePaper } from './StockIssuePaper';
+import { StockIssueHistory } from './StockIssueHistory';
 import './stock-issues.css';
 import { archiveIssueDraft, freshIssue, hasIssueContent, readIssueDrafts, recoverIssueDraft, type IssueDraft } from '../../lib/stockIssueDrafts';
 import { warehouseAddress } from '../../lib/warehouse';
@@ -53,12 +54,6 @@ export function StockIssueManagement({ products, customers, user }: Props) {
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const [view, setView] = useState<'form' | 'history'>('form');
-  const [history, setHistory] = useState<SavedStockIssue[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError] = useState('');
-  const [historySearch, setHistorySearch] = useState('');
-  const [historyQuery, setHistoryQuery] = useState('');
-  const [historyReload, setHistoryReload] = useState(0);
   const [customerQuery, setCustomerQuery] = useState('');
   const [productQuery, setProductQuery] = useState('');
   const [preview, setPreview] = useState<{ data: StockIssueData; record: SavedStockIssue | null } | null>(null);
@@ -107,16 +102,6 @@ export function StockIssueManagement({ products, customers, user }: Props) {
     }
     catch { setStorageError('Trình duyệt chưa giữ được bản nháp. Hãy lưu phiếu trước khi đóng trang.'); }
   }, [form, requestId, saved, draftKey, user.name]);
-
-  useEffect(() => {
-    if (view !== 'history') return;
-    let active = true;
-    setHistoryLoading(true); setHistoryError('');
-    api.get(`/api/stock-issues?q=${encodeURIComponent(historyQuery)}`).then(data => { if (active) setHistory(data); })
-      .catch((err: Error) => { if (active) setHistoryError(readableError(err)); })
-      .finally(() => { if (active) setHistoryLoading(false); });
-    return () => { active = false; };
-  }, [view, historyQuery, historyReload]);
 
   useEffect(() => {
     if (!preview || pendingAction) return;
@@ -206,7 +191,6 @@ export function StockIssueManagement({ products, customers, user }: Props) {
           const nextDrafts = readIssueDrafts(localStorage, archiveKey, user.name).filter(draft => draft.requestId !== record!.requestId);
           localStorage.setItem(archiveKey, JSON.stringify(nextDrafts)); setDrafts(nextDrafts);
         } catch { setStorageError('Phiếu đã lưu vào hệ thống, nhưng chưa dọn được bản nháp trên máy này.'); }
-        setHistoryReload(value => value + 1);
       }
       if (print) { await nextFrame(); await document.fonts.ready; window.print(); }
     } catch (err) { setError(readableError(err)); }
@@ -224,11 +208,7 @@ export function StockIssueManagement({ products, customers, user }: Props) {
       <button type="button" className="issue-button secondary" disabled={catalogLoading} onClick={() => { void refreshCatalog(); }}>{catalogLoading ? 'Đang tải danh mục…' : 'Tải lại danh mục'}</button>
     </div>
     {drafts.length > 0 && <details className="issue-card issue-draft-list"><summary>Bản nháp đã lưu trên máy này ({drafts.length})</summary><div className="issue-history">{drafts.map(draft => <button type="button" key={draft.requestId} onClick={() => beginNew(undefined, draft)}><span><strong>{draft.form.recipient || 'Chưa nhập người nhận'}</strong><small>{draft.form.date} · {draft.form.items.length} mặt hàng · {draft.form.warehouseName || 'Chưa chọn kho'}</small></span><span>Mở bản nháp</span></button>)}</div></details>}
-    {view === 'history' ? <section className="issue-card">
-      <div className="issue-section-title"><h2>Phiếu đã lưu</h2><span>50 kết quả gần nhất</span></div>
-      <form className="issue-search-row" onSubmit={event => { event.preventDefault(); setHistoryQuery(historySearch); setHistoryReload(value => value + 1); }}><input aria-label="Tìm phiếu đã lưu" placeholder="Nhập số phiếu, tên khách hoặc số điện thoại" value={historySearch} onChange={event => setHistorySearch(event.target.value)} /><button className="issue-button secondary" type="submit"><Search size={18} />Tìm phiếu</button></form>
-      {historyLoading ? <p role="status">Đang tải phiếu…</p> : historyError ? <p role="alert" className="issue-error">{historyError}</p> : history.length === 0 ? <p className="issue-empty">Chưa có phiếu phù hợp. Phiếu lưu xong sẽ xuất hiện tại đây.</p> : <div className="issue-history">{history.map(record => <button type="button" key={record._id} onClick={() => { setPreview({ data: record, record }); setError(''); }}><span><strong>{record.number}</strong><span>{record.recipient}</span><small>{record.date.split('-').reverse().join('/')} · {record.warehouseName}</small></span><span><strong>{money(stockIssueAmounts(record).total)} đ</strong><small>Xem / in lại →</small></span></button>)}</div>}
-    </section> : <>
+    {view === 'history' ? <StockIssueHistory onOpen={record => { setPreview({ data: record, record }); setError(''); }} /> : <>
       <div className="issue-steps"><span><b>1</b> Người nhận & kho</span><span><b>2</b> Hàng xuất</span><span><b>3</b> Xem phiếu & in</span></div>
       {saved ? <div className="issue-success" role="status"><Check size={20} /><span>Đã lưu <strong>{saved.number}</strong>. Bạn có thể in lại hoặc lập phiếu tiếp theo.</span></div> : <p className="issue-draft" role="status">{storageError || `${draftNotice} Bản nháp được tự giữ trên máy này khi bạn nhập. Chọn “Lưu phiếu” để lưu vào hệ thống.`}</p>}
       <fieldset disabled={!!saved || saving} className="issue-form-fields">

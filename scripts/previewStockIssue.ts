@@ -4,6 +4,7 @@ import { createServer } from 'vite';
 import { randomUUID } from 'node:crypto';
 import { normalizeStockIssue, type SavedStockIssue } from '../src/lib/stockIssue.js';
 import { demoCustomer, demoProducts } from './stockIssueDemoData.js';
+import { STOCK_ISSUE_HISTORY_START, STOCK_ISSUE_HISTORY_PAGE_SIZE, STOCK_ISSUE_DAY_PAGE_SIZE } from '../src/lib/stockIssueHistory.js';
 
 const app = express();
 const records: SavedStockIssue[] = [];
@@ -22,6 +23,21 @@ app.get('/api/warehouses', (_req, res) => res.json([{ _id: 'demo-warehouse', nam
 app.get('/api/stock-issues', (req, res) => {
   const q = String(req.query.q || '').toLocaleLowerCase();
   res.json(records.filter(record => `${record.number} ${record.recipient} ${record.phone}`.toLocaleLowerCase().includes(q)).slice(0, 50));
+});
+const matchingHistory = (query: unknown) => {
+  const q = String(query || '').trim().toLocaleLowerCase();
+  return records.filter(record => record.date >= STOCK_ISSUE_HISTORY_START && `${record.number} ${record.recipient} ${record.phone}`.toLocaleLowerCase().includes(q));
+};
+app.get('/api/stock-issues/days', (req, res) => {
+  const counts = new Map<string, number>();
+  matchingHistory(req.query.q).filter(record => !req.query.before || record.date < String(req.query.before)).forEach(record => counts.set(record.date, (counts.get(record.date) || 0) + 1));
+  const days = [...counts].sort(([a], [b]) => b.localeCompare(a)).map(([date, count]) => ({ date, count }));
+  res.json({ days: days.slice(0, STOCK_ISSUE_HISTORY_PAGE_SIZE), hasMore: days.length > STOCK_ISSUE_HISTORY_PAGE_SIZE });
+});
+app.get('/api/stock-issues/day', (req, res) => {
+  const offset = Number(req.query.offset) || 0;
+  const items = matchingHistory(req.query.q).filter(record => record.date === req.query.date).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b._id.localeCompare(a._id));
+  res.json({ items: items.slice(offset, offset + STOCK_ISSUE_DAY_PAGE_SIZE), hasMore: items.length > offset + STOCK_ISSUE_DAY_PAGE_SIZE });
 });
 app.post('/api/stock-issues', (req, res) => {
   try {

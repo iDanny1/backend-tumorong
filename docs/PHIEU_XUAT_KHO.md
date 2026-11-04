@@ -28,7 +28,8 @@ Trong mục này, **Chọn công ty lập phiếu** có hai lựa chọn: **CÔN
 - **Tạo phiếu mới** mở lựa chọn **Lưu nháp / Bỏ phiếu đang soạn / Hủy** khi chưa lưu. Lưu nháp giữ cả các dòng chưa nhập xong trong **Bản nháp đã lưu trên máy này** để mở lại. Phiếu mới có thông tin khách, kho và hàng trống, không lấy nội dung phiếu cũ.
 - **Xóa phiếu hiện tại** hỏi xác nhận và xóa nội dung đang mở cùng bản nháp tương ứng trên máy này. Hủy giữ nguyên nội dung. Chức năng này không xóa chứng từ đã lưu trong lịch sử hệ thống.
 - Phiếu hoàn chỉnh lưu trong MongoDB, giữ nguyên nội dung tại thời điểm lưu kể cả khi danh mục thay đổi.
-- **Phiếu đã lưu** tìm theo số phiếu, tên người nhận, số điện thoại và hiển thị 50 kết quả gần nhất.
+- **Phiếu đã lưu** xếp theo ngày xuất từ **01/09/2026**, ngày mới nhất trước. Mỗi ngày hiện **Ngày … tháng … năm …** và số phiếu xuất; bấm để mở danh sách tên người nhận, số phiếu, kho và tổng thanh toán. Chỉ hiện các ngày có phiếu. Phiếu trước mốc này vẫn được giữ trong hệ thống.
+- Tìm theo số phiếu, tên người nhận hoặc số điện thoại trên toàn bộ lịch sử từ mốc trên; số đếm theo ngày phản ánh kết quả tìm kiếm. Mỗi lần tải tối đa 30 ngày và 50 phiếu trong một ngày, dùng **Xem thêm ngày trước** / **Xem thêm phiếu trong ngày** để tải tiếp. Số đếm tính trên toàn bộ phiếu phù hợp, không giới hạn ở các phiếu đã tải.
 - **In phiếu / Lưu PDF** in lại cùng phiếu. **Sao chép để sửa** tạo phiếu mới với số mới; phiếu gốc giữ nguyên.
 - Lưu lặp lại cùng yêu cầu không tạo bản ghi thứ hai. Bộ đếm có thể bỏ qua số nếu một yêu cầu lưu thất bại hoặc gửi đồng thời.
 
@@ -36,7 +37,7 @@ Trong mục này, **Chọn công ty lập phiếu** có hai lựa chọn: **CÔN
 
 Đây là chức năng lập chứng từ, **không tự trừ tồn kho, tạo đơn hàng, tăng doanh thu hay thay đổi hồ sơ khách**. Không đồng bộ AppSheet trong bản này. Chức năng dùng danh mục khách / sản phẩm / kho của backend hiện tại. Đơn vị tính và các dòng nhập tay được giữ trên phiếu.
 
-API: `GET /api/stock-issues?q=...`, `POST /api/stock-issues`. Dữ liệu phiếu và bộ đếm nằm trong collection riêng; không sửa collection đơn hàng / sản phẩm. Việc triển khai lên môi trường thật cần giữ các biện pháp bảo vệ API của hệ thống; API này chưa bổ sung một cơ chế đăng nhập mới.
+API: `GET /api/stock-issues?q=...`, `POST /api/stock-issues`; lịch sử theo ngày dùng `GET /api/stock-issues/days?q=...&before=YYYY-MM-DD` và `GET /api/stock-issues/day?date=YYYY-MM-DD&q=...&offset=0`. Dữ liệu phiếu và bộ đếm nằm trong collection riêng; không sửa collection đơn hàng / sản phẩm. Việc triển khai lên môi trường thật cần giữ các biện pháp bảo vệ API của hệ thống; API này chưa bổ sung một cơ chế đăng nhập mới.
 
 ## Chạy thử riêng
 
