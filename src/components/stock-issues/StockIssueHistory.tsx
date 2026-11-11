@@ -41,7 +41,7 @@ function DayIssues({ day, query, onOpen }: { day: StockIssueDay; query: string; 
     </summary>
     <div className="issue-day-content">
       <div className="issue-history issue-saved-list">{items.map(record => <button type="button" key={record._id} onClick={() => onOpen(record)}>
-        <span className="issue-saved-name"><strong>{record.recipient}</strong><small>{record.number} · {record.warehouseName}</small></span>
+        <span className="issue-saved-name"><strong>{record.organizationName || record.recipient || record.phone || 'Chưa nhập người nhận'}</strong><small>{record.number} · {record.warehouseName}</small></span>
         <span className="issue-saved-amount"><strong>{money(stockIssueAmounts(record).total)} đ</strong><small>Xem phiếu / In lại →</small></span>
       </button>)}</div>
       {loading && <p role="status" className="issue-hint">Đang tải phiếu…</p>}

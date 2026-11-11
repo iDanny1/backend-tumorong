@@ -6,6 +6,7 @@ export interface StockIssueLine {
   requested: number;
   quantity: number;
   unitPrice: number;
+  note?: string;
   vatRate?: number;
   discount?: number;
   discountType?: "amount" | "percent";
@@ -28,6 +29,10 @@ export interface StockIssueData {
   creditAccount: string;
   attachments: string;
   creator: string;
+  creatorPhone?: string;
+  isOrganization?: boolean;
+  organizationName?: string;
+  paymentInfo?: string;
   receiver: string;
   keeper: string;
   accountant: string;
@@ -79,6 +84,9 @@ export function stockIssueTotals(items: StockIssueLine[], vatRate: number) {
 
 export function upgradeStockIssue(data: StockIssueData): StockIssueData {
   return { ...data, pricingVersion: 2, hideVat: data.hideVat ?? false, hideDiscount: data.hideDiscount ?? false, billDiscount: data.billDiscount ?? 0, billDiscountType: data.billDiscountType ?? 'amount',
+    creatorPhone: data.creatorPhone ?? '', paymentInfo: data.paymentInfo ?? '',
+    isOrganization: data.isOrganization ?? false, organizationName: data.organizationName ?? '',
+    deliveryAddress: data.isOrganization === undefined ? data.deliveryAddress || data.address : data.deliveryAddress,
     items: data.items.map(item => ({ ...item, vatRate: item.vatRate ?? data.vatRate, discount: item.discount ?? 0, discountType: item.discountType ?? 'amount' })) };
 }
 
@@ -196,6 +204,9 @@ export function normalizeStockIssue(raw: unknown): StockIssueData {
       extras.discount = numeric(entry.discount, `Chiết khấu dòng ${index + 1}`, extras.discountType === 'percent' ? 100 : 999_999_999_999);
       if (extras.discountType === 'amount' && (!Number.isInteger(extras.discount) || extras.discount > Math.round(quantity * unitPrice))) throw new Error(`Chiết khấu dòng ${index + 1} không được vượt tiền hàng và phải là số đồng nguyên.`);
     }
+    const note = entry.note ?? '';
+    if (typeof note !== 'string' || note.length > 300) throw new Error(`Ghi chú dòng ${index + 1} tối đa 300 ký tự.`);
+    if (modern && note.trim()) extras.note = note.trim();
     return { ...extras, productId: field('productId'), name: field('name', true), sku: field('sku'), unit: field('unit', true), requested, quantity, unitPrice };
   });
   if (!items.some(item => item.quantity > 0)) throw new Error('Cần ít nhất một mặt hàng có số lượng thực xuất lớn hơn 0.');
@@ -206,9 +217,17 @@ export function normalizeStockIssue(raw: unknown): StockIssueData {
   }
   if (items.reduce((sum, item) => sum + Math.round(item.quantity * item.unitPrice), 0) > 999_999_999_999) throw new Error('Tiền hàng vượt giới hạn 999.999.999.999 đồng.');
   if (stockIssueAmounts({ items, vatRate, ...pricing } as StockIssueData).total > 999_999_999_999) throw new Error('Tổng phiếu vượt giới hạn 999.999.999.999 đồng.');
+  const details: Partial<StockIssueData> = {};
+  if (modern && input.isOrganization !== undefined) {
+    if (typeof input.isOrganization !== 'boolean') throw new Error('Tùy chọn khách đơn vị không hợp lệ.');
+    details.isOrganization = input.isOrganization;
+    if (details.isOrganization) details.organizationName = text('organizationName', 'Tên đơn vị');
+  }
+  if (modern && input.creatorPhone) details.creatorPhone = text('creatorPhone', 'SĐT người lập phiếu', false, 30);
+  if (modern && input.paymentInfo) details.paymentInfo = text('paymentInfo', 'Thông tin thanh toán');
   return {
-    ...pricing, ...display, date, companyName: text('companyName', 'Tên công ty', true), companyAddress: text('companyAddress', 'Địa chỉ công ty', true),
-    customerId: text('customerId', 'Mã khách hàng'), recipient: text('recipient', 'Người / đơn vị nhận hàng', true), phone: text('phone', 'Số điện thoại', false, 30),
+    ...pricing, ...display, ...details, date, companyName: text('companyName', 'Tên công ty', true), companyAddress: text('companyAddress', 'Địa chỉ công ty', true),
+    customerId: text('customerId', 'Mã khách hàng'), recipient: text('recipient', 'Họ và tên người nhận hàng', !modern), phone: text('phone', 'SĐT người nhận', false, 30),
     address: text('address', 'Địa chỉ'), deliveryAddress: text('deliveryAddress', 'Địa điểm giao hàng'),
     reason: text('reason', 'Lý do xuất', true), warehouseId: text('warehouseId', 'Mã kho'), warehouseName: text('warehouseName', 'Kho xuất', true), warehouseLocation: text('warehouseLocation', 'Địa điểm kho'),
     debitAccount: text('debitAccount', 'Tài khoản Nợ', false, 30), creditAccount: text('creditAccount', 'Tài khoản Có', false, 30), attachments: text('attachments', 'Chứng từ kèm theo'),

@@ -10,6 +10,7 @@ const app = express();
 const records: SavedStockIssue[] = [];
 let customer = { ...demoCustomer };
 app.use(express.json());
+app.get('/api/auth/csrf', (_req, res) => res.json({ csrfToken: randomUUID() }));
 app.get('/api/customers', (_req, res) => res.json([customer]));
 app.get('/api/products', (_req, res) => res.json(demoProducts));
 app.put('/api/customers/:id', (req, res) => {
@@ -22,11 +23,11 @@ app.get('/api/integrations/appsheet/status', (_req, res) => res.json({ enabled: 
 app.get('/api/warehouses', (_req, res) => res.json([{ _id: 'demo-warehouse', name: 'Kho quận 1', address: '38/15 Nguyễn Giản Thanh, Phường Hòa Hưng, Thành phố Hồ Chí Minh' }]));
 app.get('/api/stock-issues', (req, res) => {
   const q = String(req.query.q || '').toLocaleLowerCase();
-  res.json(records.filter(record => `${record.number} ${record.recipient} ${record.phone}`.toLocaleLowerCase().includes(q)).slice(0, 50));
+  res.json(records.filter(record => `${record.number} ${record.recipient} ${record.organizationName || ''} ${record.phone}`.toLocaleLowerCase().includes(q)).slice(0, 50));
 });
 const matchingHistory = (query: unknown) => {
   const q = String(query || '').trim().toLocaleLowerCase();
-  return records.filter(record => record.date >= STOCK_ISSUE_HISTORY_START && `${record.number} ${record.recipient} ${record.phone}`.toLocaleLowerCase().includes(q));
+  return records.filter(record => record.date >= STOCK_ISSUE_HISTORY_START && `${record.number} ${record.recipient} ${record.organizationName || ''} ${record.phone}`.toLocaleLowerCase().includes(q));
 };
 app.get('/api/stock-issues/days', (req, res) => {
   const counts = new Map<string, number>();
@@ -50,6 +51,7 @@ app.post('/api/stock-issues', (req, res) => {
 });
 const vite = await createServer({
   define: { 'import.meta.env.VITE_API_URL': JSON.stringify('') },
+  optimizeDeps: { entries: ['scripts/stock-issue-demo.tsx'], esbuildOptions: { supported: { destructuring: true } } },
   server: { middlewareMode: true, hmr: false }, appType: 'custom',
 });
 app.use(vite.middlewares);

@@ -153,6 +153,17 @@
 @media print { .issue-confirm-overlay { display: none !important; } }
 .issue-display-options > label { margin-top: 14px; }
 .issue-display-options input[type="checkbox"], .issue-print-options input[type="checkbox"] { width: 20px; height: 20px; min-height: 20px; flex-shrink: 0; accent-color: #065f46; }
+.issue-customer-type { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.issue-customer-type input[type="checkbox"] { width: 20px; height: 20px; min-height: 20px; accent-color: #065f46; }
+.paper-information section { margin-bottom: 3mm; overflow-wrap: anywhere; }
+.paper-information section > div { margin: 1mm 0; }
+.paper-contact { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 3fr); gap: 3mm; }
+.stock-paper-v2 .paper-table { font-size: 8pt; }
+.stock-paper-v2 .paper-table th, .stock-paper-v2 .paper-table td { padding: 1.1mm .65mm; }
+.stock-paper-v2 .paper-table thead tr:first-child th:first-child { white-space: nowrap; padding-inline: .25mm; }
+.stock-paper-v2 .paper-total:last-child { text-decoration: underline; text-underline-offset: .12em; }
+.paper-write-in { display: flex; align-items: baseline; gap: 1mm; margin-top: 1.5mm; overflow-wrap: anywhere; }
+.paper-write-in::after { content: ''; flex: 1; border-bottom: 1px dotted currentColor; }
 .issue-print-options { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 14px 24px; background: #f5faf7; padding: 14px 20px; border-bottom: 1px solid #ccd8d0; font-size: 14px; }
 .issue-print-options small { color: #52645e; }
 @media print { .issue-print-options { display: none !important; } }

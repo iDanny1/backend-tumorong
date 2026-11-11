@@ -137,8 +137,23 @@ export function StockIssueManagement({ products, customers, user }: Props) {
   const change = <K extends keyof StockIssueData>(key: K, value: StockIssueData[K]) => { setForm(prev => ({ ...prev, [key]: value })); setError(''); };
   const updateLine = (index: number, value: Partial<StockIssueLine>) => setForm(prev => ({ ...prev, items: prev.items.map((line, i) => i === index ? { ...line, ...value } : line) }));
   const chooseCustomer = (customer: Customer) => {
-    setForm(prev => ({ ...prev, customerId: customer._id, recipient: customer.name, phone: customer.phone || '', address: customer.address || '', deliveryAddress: customer.deliveryAddress || customer.address || '' }));
+    setForm(prev => ({
+      ...prev, customerId: customer._id, recipient: prev.isOrganization ? '' : customer.name,
+      organizationName: prev.isOrganization ? customer.name : '', phone: customer.phone || '',
+      address: customer.address || '', deliveryAddress: customer.deliveryAddress || customer.address || '',
+    }));
     setCustomerQuery(''); setError('');
+  };
+  const changeCustomerType = (isOrganization: boolean) => {
+    const customer = customers.find(entry => entry._id === form.customerId);
+    setForm(prev => {
+      const useCatalogName = isOrganization && !!customer && prev.recipient === customer.name;
+      return {
+        ...prev, isOrganization,
+        organizationName: useCatalogName ? customer.name : prev.organizationName,
+        recipient: useCatalogName ? '' : prev.recipient,
+      };
+    });
   };
   const addProduct = (product: Product) => {
     setForm(prev => {
@@ -207,7 +222,7 @@ export function StockIssueManagement({ products, customers, user }: Props) {
       <button type="button" className="issue-button danger" disabled={saving} onClick={() => setPendingAction({ kind: 'delete' })}><Trash2 size={18} />Xóa phiếu hiện tại</button>
       <button type="button" className="issue-button secondary" disabled={catalogLoading} onClick={() => { void refreshCatalog(); }}>{catalogLoading ? 'Đang tải danh mục…' : 'Tải lại danh mục'}</button>
     </div>
-    {drafts.length > 0 && <details className="issue-card issue-draft-list"><summary>Bản nháp đã lưu trên máy này ({drafts.length})</summary><div className="issue-history">{drafts.map(draft => <button type="button" key={draft.requestId} onClick={() => beginNew(undefined, draft)}><span><strong>{draft.form.recipient || 'Chưa nhập người nhận'}</strong><small>{draft.form.date} · {draft.form.items.length} mặt hàng · {draft.form.warehouseName || 'Chưa chọn kho'}</small></span><span>Mở bản nháp</span></button>)}</div></details>}
+    {drafts.length > 0 && <details className="issue-card issue-draft-list"><summary>Bản nháp đã lưu trên máy này ({drafts.length})</summary><div className="issue-history">{drafts.map(draft => <button type="button" key={draft.requestId} onClick={() => beginNew(undefined, draft)}><span><strong>{(draft.form.isOrganization && draft.form.organizationName) || draft.form.recipient || 'Chưa nhập người nhận'}</strong><small>{draft.form.date} · {draft.form.items.length} mặt hàng · {draft.form.warehouseName || 'Chưa chọn kho'}</small></span><span>Mở bản nháp</span></button>)}</div></details>}
     {view === 'history' ? <StockIssueHistory onOpen={record => { setPreview({ data: record, record }); setError(''); }} /> : <>
       <div className="issue-steps"><span><b>1</b> Người nhận & kho</span><span><b>2</b> Hàng xuất</span><span><b>3</b> Xem phiếu & in</span></div>
       {saved ? <div className="issue-success" role="status"><Check size={20} /><span>Đã lưu <strong>{saved.number}</strong>. Bạn có thể in lại hoặc lập phiếu tiếp theo.</span></div> : <p className="issue-draft" role="status">{storageError || `${draftNotice} Bản nháp được tự giữ trên máy này khi bạn nhập. Chọn “Lưu phiếu” để lưu vào hệ thống.`}</p>}
@@ -217,9 +232,16 @@ export function StockIssueManagement({ products, customers, user }: Props) {
             <div className="issue-wide"><Field label="Tìm khách hàng có sẵn"><div className="issue-search"><Search size={19} /><input placeholder="Gõ tên hoặc số điện thoại…" value={customerQuery} onChange={event => setCustomerQuery(event.target.value)} /></div></Field>
               {customerQuery.trim() && <div className="issue-results">{matches(customers, customerQuery, c => `${c.name} ${c.phone || ''} ${c.deliveryAddress || c.address || ''}`).map(customer => <button type="button" key={customer._id} onClick={() => chooseCustomer(customer)}><strong>{customer.name}</strong><small>{customer.phoneRaw || customer.phone || 'Chưa có SĐT'} {(customer.deliveryAddress || customer.address) ? `· ${customer.deliveryAddress || customer.address}` : ''}</small></button>)}{!matches(customers, customerQuery, c => `${c.name} ${c.phone || ''} ${c.deliveryAddress || c.address || ''}`).length && <p>Chưa tìm thấy khách. Bạn có thể nhập thông tin bên dưới.</p>}</div>}
             </div>
-            <Field label="Người / đơn vị nhận hàng *"><input value={form.recipient} onChange={event => { change('recipient', event.target.value); change('customerId', ''); }} placeholder="Nhập tên khách hoặc tên công ty" /></Field>
-            <Field label="Số điện thoại"><input type="tel" value={form.phone} onChange={event => change('phone', event.target.value)} placeholder="Số điện thoại liên hệ" /></Field>
-            <Field label="Địa chỉ người nhận" wide><input value={form.address} onChange={event => { const value = event.target.value; setForm(prev => ({ ...prev, address: value, deliveryAddress: prev.deliveryAddress === prev.address ? value : prev.deliveryAddress })); }} placeholder="Số nhà, đường, phường, tỉnh / thành phố" /></Field>
+            <label className="issue-customer-type issue-wide"><input type="checkbox" checked={!!form.isOrganization} onChange={event => changeCustomerType(event.target.checked)} />Khách đơn vị</label>
+            <Field label="Họ và tên người nhận hàng"><input value={form.recipient} onChange={event => { change('recipient', event.target.value); if (!form.isOrganization) change('customerId', ''); }} /></Field>
+            <Field label="SĐT người nhận"><input type="tel" maxLength={30} value={form.phone} onChange={event => change('phone', event.target.value)} /></Field>
+            {form.isOrganization && <>
+              <Field label="Tên đơn vị" wide><input value={form.organizationName ?? ''} onChange={event => { change('organizationName', event.target.value); change('customerId', ''); }} /></Field>
+              <Field label="Địa chỉ đơn vị nhận hàng" wide><input value={form.address} onChange={event => change('address', event.target.value)} /></Field>
+            </>}
+            <Field label="Địa chỉ nhận hàng" wide><input value={form.deliveryAddress} onChange={event => change('deliveryAddress', event.target.value)} /></Field>
+            <Field label="Người lập phiếu"><input value={form.creator} onChange={event => change('creator', event.target.value)} /></Field>
+            <Field label="SĐT người lập phiếu"><input type="tel" maxLength={30} value={form.creatorPhone ?? ''} onChange={event => change('creatorPhone', event.target.value)} /></Field>
             <Field label="Chọn kho có sẵn"><select value={form.warehouseId} onChange={event => { const warehouse = warehouses.find(w => w._id === event.target.value); setForm(prev => ({ ...prev, warehouseId: warehouse?._id || '', warehouseName: warehouse?.name || '', warehouseLocation: warehouseAddress(warehouse) })); }}><option value="">Nhập kho bên cạnh hoặc chọn tại đây</option>{warehouses.map(warehouse => <option value={warehouse._id} key={warehouse._id}>{warehouse.name}{warehouseAddress(warehouse) ? ` · ${warehouseAddress(warehouse)}` : ' · Chưa có địa chỉ'}</option>)}</select></Field>
             <Field label="Tên kho xuất *"><input value={form.warehouseName} onChange={event => { change('warehouseName', event.target.value); change('warehouseId', ''); }} placeholder="Ví dụ: Kho quận 1" /></Field>
             <Field label="Địa chỉ kho xuất" wide><input value={form.warehouseLocation} onChange={event => change('warehouseLocation', event.target.value)} placeholder="Địa chỉ này sẽ hiện trên phiếu in" /></Field>
@@ -246,8 +268,10 @@ export function StockIssueManagement({ products, customers, user }: Props) {
               <Field label="Đơn giá (đ) *"><input type="number" min="0" max="1000000000" step="1" value={item.unitPrice} onChange={event => updateLine(index, { unitPrice: Number(event.target.value) })} /></Field>
               <Field label="VAT *"><select value={item.vatRate} onChange={event => updateLine(index, { vatRate: Number(event.target.value) })}><option value={-1}>Chọn thuế suất</option>{[0, 5, 8, 10].map(rate => <option key={rate} value={rate}>{rate}%</option>)}</select></Field>
               <Field label="Chiết khấu"><div className="issue-discount-input"><input aria-label={`Chiết khấu ${index + 1}`} type="number" min="0" step={item.discountType === 'percent' ? '0.01' : '1'} max={item.discountType === 'percent' ? 100 : totals.lines[index]} value={item.discount ?? 0} onChange={event => updateLine(index, { discount: Number(event.target.value) })} /><select aria-label={`Đơn vị chiết khấu từng dòng ${index + 1}`} value={item.discountType ?? 'amount'} onChange={event => updateLine(index, { discountType: event.target.value as 'amount' | 'percent', discount: 0 })}><option value="amount">đ</option><option value="percent">%</option></select></div></Field>
-              <div className="issue-line-total"><span>Thành tiền</span><strong>{money(totals.lines[index])} đ</strong></div>
+              <Field label="Ghi chú" wide><input maxLength={300} value={item.note ?? ''} onChange={event => updateLine(index, { note: event.target.value })} /></Field>
+              <div className="issue-line-total"><span>Thành tiền chưa VAT</span><strong>{money(totals.taxable[index])} đ</strong></div>
               <div className="issue-line-total"><span>VAT sau các chiết khấu</span><strong>{item.vatRate! >= 0 ? `${money(totals.lineVat[index])} đ` : 'Chọn VAT'}</strong></div>
+              <div className="issue-line-total"><span>Thành tiền đã VAT</span><strong>{item.vatRate! >= 0 ? `${money(totals.taxable[index] + totals.lineVat[index])} đ` : 'Chọn VAT'}</strong></div>
             </div>
           </section>)}</div>
           <datalist id="issue-units">{['Chai', 'Hộp', 'Thùng', 'Gói', 'Cái', 'Bộ', 'Kg', 'Lít'].map(unit => <option value={unit} key={unit} />)}</datalist>
@@ -263,7 +287,7 @@ export function StockIssueManagement({ products, customers, user }: Props) {
         </section>
         <section className="issue-card issue-display-options"><h2><span className="issue-step">3</span> Hiển thị trên phiếu</h2>
           <label><input type="checkbox" checked={form.hideVat ?? false} onChange={event => change('hideVat', event.target.checked)} />Ẩn VAT (cột thuế suất và tiền VAT)</label>
-          <label><input type="checkbox" checked={form.hideDiscount ?? false} onChange={event => change('hideDiscount', event.target.checked)} />Ẩn chiết khấu (cột và dòng tổng bill)</label>
+          <label><input type="checkbox" checked={form.hideDiscount ?? false} onChange={event => change('hideDiscount', event.target.checked)} />Ẩn chiết khấu (cột và dòng tổng chiết khấu)</label>
           <p className="issue-hint">Tùy chọn áp dụng cho bản xem trước và bản in. Tổng tiền thanh toán vẫn tính đầy đủ VAT và chiết khấu đã nhập.</p>
         </section>
         <details className="issue-card issue-options"><summary>Thông tin công ty, giao hàng & người ký <span>Chỉ mở khi cần thay đổi</span></summary><div className="issue-grid">
@@ -273,11 +297,11 @@ export function StockIssueManagement({ products, customers, user }: Props) {
           </select></Field>
           <Field label="Tên công ty *" wide><input value={form.companyName} onChange={event => change('companyName', event.target.value)} /></Field>
           <Field label="Địa chỉ công ty *" wide><input value={form.companyAddress} onChange={event => change('companyAddress', event.target.value)} /></Field>
-          <Field label="Địa điểm giao hàng" wide><input value={form.deliveryAddress} onChange={event => change('deliveryAddress', event.target.value)} /></Field>
+          <Field label="Thông tin thanh toán" wide><input maxLength={500} value={form.paymentInfo ?? ''} onChange={event => change('paymentInfo', event.target.value)} /></Field>
           <Field label="Chứng từ gốc kèm theo"><input value={form.attachments} onChange={event => change('attachments', event.target.value)} /></Field>
           <Field label="Tài khoản Nợ"><input value={form.debitAccount} onChange={event => change('debitAccount', event.target.value)} /></Field>
           <Field label="Tài khoản Có"><input value={form.creditAccount} onChange={event => change('creditAccount', event.target.value)} /></Field>
-          {([['creator', 'Người lập biểu'], ['receiver', 'Người nhận hàng ký'], ['keeper', 'Thủ kho'], ['accountant', 'Kế toán trưởng'], ['director', 'Giám đốc']] as const).map(([key, label]) => <Field label={label} key={key}><input value={form[key]} onChange={event => change(key, event.target.value)} placeholder="Có thể để trống để ký tay" /></Field>)}
+          {([['receiver', 'Người nhận hàng ký'], ['keeper', 'Thủ kho'], ['accountant', 'Kế toán trưởng'], ['director', 'Giám đốc']] as const).map(([key, label]) => <Field label={label} key={key}><input value={form[key]} onChange={event => change(key, event.target.value)} placeholder="Có thể để trống để ký tay" /></Field>)}
         </div></details>
       </fieldset>
       <p className="issue-hint">Mục này lập và in chứng từ; tồn kho vẫn được cập nhật theo quy trình quản lý kho hiện tại.</p>

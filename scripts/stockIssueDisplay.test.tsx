@@ -16,12 +16,12 @@ test('four display modes keep payment, quantities and table columns consistent',
     assert.equal(html.includes('Tiền VAT (đ)'), !hideVat);
     assert.equal(html.includes('VAT %'), !hideVat);
     assert.equal(html.includes('Chiết khấu (đ)'), !hideDiscount);
-    assert.equal(html.includes('Chiết khấu tổng bill'), !hideDiscount);
-    assert.equal((html.match(/<col style=/g) ?? []).length, 8 + (hideVat ? 0 : 2) + (hideDiscount ? 0 : 1));
-    assert.ok(html.includes(`colSpan="${7 + (hideVat ? 0 : 2) + (hideDiscount ? 0 : 1)}"`));
+    assert.equal(html.includes('Tổng chiết khấu'), !hideDiscount);
+    assert.equal((html.match(/<col style=/g) ?? []).length, 9 + (hideVat ? 0 : 2) + (hideDiscount ? 0 : 1));
+    assert.ok(html.includes(`colSpan="${8 + (hideVat ? 0 : 2) + (hideDiscount ? 0 : 1)}"`));
     assert.ok(html.includes('Đơn giá'));
     assert.ok(html.includes('Thành tiền'));
-    assert.ok(html.includes('Cộng tiền hàng'));
+    assert.ok(html.includes('Cộng thành tiền chưa VAT'));
     assert.ok(html.includes('Tổng tiền thanh toán'));
     assert.ok(html.includes('204.120'));
     assert.ok(!html.includes('CK sản phẩm'));
@@ -43,4 +43,29 @@ test('warehouse address survives validation and appears on both printable templa
     const html = renderToStaticMarkup(<StockIssuePaper data={data} />);
     assert.ok(html.includes(warehouseLocation));
   }
+});
+
+test('notes follow their own lines and the column disappears when the last note is cleared', () => {
+  const item = sample.items[0];
+  for (const note of ['', '  ', '  Giao riêng  ']) {
+    const data = normalizeStockIssue({ ...sample, items: [item, { ...item, note }] });
+    const html = renderToStaticMarkup(<StockIssuePaper data={data} />);
+    const rows = html.match(/<tbody>(.*?)<\/tbody>/s)![1].split('</tr>');
+    assert.equal(html.includes('Ghi chú</th>'), Boolean(note.trim()));
+    assert.ok(!rows[0].includes('Giao riêng'));
+    assert.equal(rows[1].includes('>Giao riêng</td>'), Boolean(note.trim()));
+    assert.equal(rows[0].match(/<td\b/g)?.length, note.trim() ? 13 : 12);
+  }
+});
+
+test('company details, optional contact and printable amounts survive save normalization', () => {
+  const data = normalizeStockIssue({ ...sample, recipient: '', isOrganization: true, organizationName: 'Đơn vị ABC',
+    creatorPhone: '0900000001', phone: '0900000002', address: 'Văn phòng ABC', deliveryAddress: 'Kho giao ABC', paymentInfo: 'Chuyển khoản' });
+  const render = (input: typeof data) => renderToStaticMarkup(<StockIssuePaper data={normalizeStockIssue(input)} />);
+  const html = render(data);
+  for (const value of ['Đơn vị ABC', 'Văn phòng ABC', 'Kho giao ABC', '0900000001', '0900000002', 'Chuyển khoản', '11.000', '189.000', '15.120', '204.120']) assert.ok(html.includes(value), value);
+  assert.ok(!html.includes('Khách đơn vị'));
+  const individual = render({ ...data, isOrganization: false });
+  assert.ok(!individual.includes('Đơn vị ABC') && !individual.includes('Văn phòng ABC'));
+  assert.ok(individual.includes('Kho giao ABC'));
 });

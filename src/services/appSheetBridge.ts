@@ -29,7 +29,7 @@ export function issueRows(issue: SavedStockIssue): { header: SheetRow; lines: Sh
   const total = stockIssueAmounts(issue);
   const pricing = issue.pricingVersion === 2 ? stockIssuePricing(issue) : null;
   return {
-    header: [issue._id, issue.number, issue.date, issue.customerId, issue.recipient, issue.phone, issue.address, issue.deliveryAddress, issue.warehouseName, issue.reason, total.subtotal, pricing ? 'Theo từng dòng' : issue.vatRate, total.vat, total.total, issue.creator, pricing?.productDiscount ?? 0, pricing?.billDiscount ?? 0, issue.pricingVersion ?? 1],
+    header: [issue._id, issue.number, issue.date, issue.customerId, issue.recipient || issue.organizationName || '', issue.phone, issue.address, issue.deliveryAddress, issue.warehouseName, issue.reason, total.subtotal, pricing ? 'Theo từng dòng' : issue.vatRate, total.vat, total.total, issue.creator, pricing?.productDiscount ?? 0, pricing?.billDiscount ?? 0, issue.pricingVersion ?? 1],
     lines: issue.items.map((item, index) => [`${issue._id}:${index + 1}`, issue._id, index + 1, item.sku, item.name, item.unit, item.requested, item.quantity, item.unitPrice, total.lines[index], item.vatRate ?? issue.vatRate, pricing?.discounts[index] ?? 0, pricing?.allocated[index] ?? 0, pricing?.taxable[index] ?? total.lines[index], pricing?.lineVat[index] ?? Math.round(total.lines[index] * issue.vatRate / 100)]),
   };
 }

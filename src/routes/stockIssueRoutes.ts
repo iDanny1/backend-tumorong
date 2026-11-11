@@ -19,7 +19,7 @@ const serialize = (doc: any) => ({ ...doc.data, _id: String(doc._id), number: do
 const historySearch = (value: unknown) => {
   const query = typeof value === 'string' ? value.trim().slice(0, 150) : '';
   const literal = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return query ? { $or: ['number', 'data.recipient', 'data.phone'].map(field => ({ [field]: { $regex: literal, $options: 'i' } })) } : {};
+  return query ? { $or: ['number', 'data.recipient', 'data.organizationName', 'data.phone'].map(field => ({ [field]: { $regex: literal, $options: 'i' } })) } : {};
 };
 const validHistoryDate = (value: unknown): value is string => {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || value < STOCK_ISSUE_HISTORY_START) return false;
@@ -58,9 +58,7 @@ router.get('/day', async (req, res) => {
 
 router.get('/', async (req, res) => {
   try {
-    const query = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 150) : '';
-    const literal = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const filter = query ? { $or: ['number', 'data.recipient', 'data.phone'].map(field => ({ [field]: { $regex: literal, $options: 'i' } })) } : {};
+    const filter = historySearch(req.query.q);
     const docs = await StockIssue.find(filter).sort({ createdAt: -1, _id: -1 }).limit(50).lean();
     res.json(docs.map(serialize));
   } catch {

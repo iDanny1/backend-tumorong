@@ -14,8 +14,10 @@ export function recoverIssueDraft(value: unknown, creator: string): IssueDraft |
   form.items = stored.form.items.slice(0, 100).map((entry: any) => {
     const line: StockIssueLine = { productId: '', name: '', sku: '', unit: '', requested: 1, quantity: 1, unitPrice: 0, vatRate: stored.form.pricingVersion === 2 ? -1 : form.vatRate, discount: 0, discountType: 'amount' };
     for (const key of Object.keys(line) as (keyof StockIssueLine)[]) if (typeof entry?.[key] === typeof line[key]) (line as any)[key] = entry[key];
+    if (typeof entry?.note === 'string') line.note = entry.note;
     return line;
   });
+  if (stored.form.isOrganization === undefined && !form.deliveryAddress) form.deliveryAddress = form.address;
   return { form, requestId: stored.requestId, savedAt: typeof stored.savedAt === 'string' ? stored.savedAt : undefined };
 }
 
