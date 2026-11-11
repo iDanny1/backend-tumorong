@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronLeft, Copy, FileText, Plus, Printer, Search, Trash2, X } from 'lucide-react';
 import { api } from '../../lib/api';
-import { money, STOCK_ISSUE_COMPANIES, normalizeStockIssue, stockIssuePricing, upgradeStockIssue, type SavedStockIssue, type StockIssueData, type StockIssueLine } from '../../lib/stockIssue';
+import { companyPaymentInfo, money, STOCK_ISSUE_COMPANIES, normalizeStockIssue, stockIssueDisplay, stockIssuePricing, upgradeStockIssue, type SavedStockIssue, type StockIssueData, type StockIssueLine } from '../../lib/stockIssue';
 import type { Customer, Product, User, Warehouse } from '../../types';
 import { StockIssuePaper } from './StockIssuePaper';
 import { StockIssueHistory } from './StockIssueHistory';
@@ -22,6 +22,20 @@ const readableError = (error: unknown) => {
 
 function Field({ label, children, wide = false }: { label: string; children: React.ReactNode; wide?: boolean }) {
   return <label className={`issue-field ${wide ? 'issue-wide' : ''}`}><span>{label}</span>{children}</label>;
+}
+
+type DisplaySettings = ReturnType<typeof stockIssueDisplay>;
+const displayChoices = [
+  ['hideVat', 'Ẩn cột VAT'], ['hideVatTotal', 'Ẩn dòng tổng VAT'],
+  ['hideDiscount', 'Ẩn cột chiết khấu'], ['hideDiscountTotal', 'Ẩn dòng tổng chiết khấu'],
+] as const;
+
+function DisplayOptions({ data, onChange }: { data: StockIssueData; onChange: (settings: DisplaySettings) => void }) {
+  const settings = stockIssueDisplay(data);
+  return <>{displayChoices.map(([key, label]) =>
+    <label key={key}><input type="checkbox" checked={settings[key]}
+      onChange={event => onChange({ ...settings, [key]: event.target.checked })} />{label}</label>
+  )}</>;
 }
 
 export function StockIssueManagement({ products, customers, user }: Props) {
@@ -59,6 +73,7 @@ export function StockIssueManagement({ products, customers, user }: Props) {
   const [preview, setPreview] = useState<{ data: StockIssueData; record: SavedStockIssue | null } | null>(null);
   const [paperScale, setPaperScale] = useState(() => Math.min(1, (window.innerWidth - 48) / (210 * 96 / 25.4)));
   const totals = stockIssuePricing(form);
+  const selectedCompany = STOCK_ISSUE_COMPANIES.find(company => company.name === form.companyName && (company.name !== '' || form.noCompany));
 
   useEffect(() => {
     let active = true;
@@ -286,17 +301,30 @@ export function StockIssueManagement({ products, customers, user }: Props) {
           <p className="issue-hint">Chiết khấu áp dụng trước VAT; chiết khấu tổng bill phân bổ theo tiền hàng sau chiết khấu từng dòng. Chọn thuế suất theo từng mặt hàng.</p>
         </section>
         <section className="issue-card issue-display-options"><h2><span className="issue-step">3</span> Hiển thị trên phiếu</h2>
-          <label><input type="checkbox" checked={form.hideVat ?? false} onChange={event => change('hideVat', event.target.checked)} />Ẩn VAT (cột thuế suất và tiền VAT)</label>
-          <label><input type="checkbox" checked={form.hideDiscount ?? false} onChange={event => change('hideDiscount', event.target.checked)} />Ẩn chiết khấu (cột và dòng tổng chiết khấu)</label>
+          <DisplayOptions data={form} onChange={settings => setForm(prev => ({ ...prev, ...settings }))} />
           <p className="issue-hint">Tùy chọn áp dụng cho bản xem trước và bản in. Tổng tiền thanh toán vẫn tính đầy đủ VAT và chiết khấu đã nhập.</p>
         </section>
         <details className="issue-card issue-options"><summary>Thông tin công ty, giao hàng & người ký <span>Chỉ mở khi cần thay đổi</span></summary><div className="issue-grid">
-          <Field label="Chọn công ty lập phiếu" wide><select value={STOCK_ISSUE_COMPANIES.find(company => company.name === form.companyName && company.address === form.companyAddress)?.name ?? ''} onChange={event => { const company = STOCK_ISSUE_COMPANIES.find(company => company.name === event.target.value); if (company) { setForm(prev => ({ ...prev, companyName: company.name, companyAddress: company.address })); setError(''); } }}>
-            {!STOCK_ISSUE_COMPANIES.some(company => company.name === form.companyName && company.address === form.companyAddress) && <option value="">Thông tin công ty đang nhập</option>}
-            {STOCK_ISSUE_COMPANIES.map(company => <option key={company.name} value={company.name}>{company.name}</option>)}
+          <Field label="Chọn công ty lập phiếu" wide><select value={selectedCompany?.name ?? 'custom'} onChange={event => {
+            const company = STOCK_ISSUE_COMPANIES.find(option => option.name === event.target.value);
+            if (company) {
+              setForm(prev => ({ ...prev, noCompany: company.name === '', companyName: company.name, companyAddress: company.address, paymentInfo: company.paymentInfo }));
+              setError('');
+            }
+          }}>
+            {!selectedCompany && <option value="custom">Thông tin công ty đang nhập</option>}
+            {STOCK_ISSUE_COMPANIES.map(company => <option key={company.name} value={company.name}>{company.name || 'Không chọn công ty'}</option>)}
           </select></Field>
-          <Field label="Tên công ty *" wide><input value={form.companyName} onChange={event => change('companyName', event.target.value)} /></Field>
-          <Field label="Địa chỉ công ty *" wide><input value={form.companyAddress} onChange={event => change('companyAddress', event.target.value)} /></Field>
+          {!form.noCompany && <>
+            <Field label="Tên công ty *" wide><input value={form.companyName} onChange={event => {
+              const companyName = event.target.value;
+              setForm(prev => {
+                const paymentInfo = companyPaymentInfo(companyName) || (prev.paymentInfo === companyPaymentInfo(prev.companyName) ? '' : prev.paymentInfo);
+                return { ...prev, companyName, paymentInfo };
+              });
+            }} /></Field>
+            <Field label="Địa chỉ công ty *" wide><input value={form.companyAddress} onChange={event => change('companyAddress', event.target.value)} /></Field>
+          </>}
           <Field label="Thông tin thanh toán" wide><input maxLength={500} value={form.paymentInfo ?? ''} onChange={event => change('paymentInfo', event.target.value)} /></Field>
           <Field label="Chứng từ gốc kèm theo"><input value={form.attachments} onChange={event => change('attachments', event.target.value)} /></Field>
           <Field label="Tài khoản Nợ"><input value={form.debitAccount} onChange={event => change('debitAccount', event.target.value)} /></Field>
@@ -319,7 +347,10 @@ export function StockIssueManagement({ products, customers, user }: Props) {
       {error && <div className="issue-error" role="alert">{error}</div>}
       {preview.data.pricingVersion === 2 && <div className="issue-print-options">
         <strong>Hiển thị trên phiếu</strong>
-        {([['hideVat', 'Ẩn VAT'], ['hideDiscount', 'Ẩn chiết khấu']] as const).map(([key, label]) => <label key={key}><input type="checkbox" checked={preview.data[key] ?? false} onChange={event => { const checked = event.target.checked; setPreview(prev => prev ? { ...prev, data: { ...prev.data, [key]: checked } } : prev); if (!preview.record) change(key, checked); }} />{label}</label>)}
+        <DisplayOptions data={preview.data} onChange={settings => {
+          setPreview(prev => prev ? { ...prev, data: { ...prev.data, ...settings } } : prev);
+          if (!preview.record) setForm(prev => ({ ...prev, ...settings }));
+        }} />
         {preview.record && <small>Lựa chọn cho lần in này; nội dung phiếu đã lưu giữ nguyên.</small>}
       </div>}
       {preview.record && <p className="issue-preview-notice" role="status"><Check size={16} />Phiếu đã được lưu. In lại không tạo thêm phiếu.</p>}

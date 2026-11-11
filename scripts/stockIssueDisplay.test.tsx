@@ -7,16 +7,18 @@ import { newStockIssue, upgradeStockIssue, normalizeStockIssue, stockIssuePricin
 const sample = { ...upgradeStockIssue(newStockIssue()), recipient: 'Khách thử', warehouseName: 'Kho thử', billDiscount: 1000, items: [
   { productId: '', name: 'Hàng thử', sku: 'SP', unit: 'Hộp', requested: 2, quantity: 2, unitPrice: 100000, vatRate: 8, discount: 10000, discountType: 'amount' as const },
 ] };
-test('four display modes keep payment, quantities and table columns consistent', () => {
+test('all sixteen combinations control columns and total rows independently', () => {
   const expected = stockIssuePricing(sample).total;
-  for (const hideVat of [false, true]) for (const hideDiscount of [false, true]) {
-    const data = normalizeStockIssue({ ...sample, hideVat, hideDiscount });
+  for (let mask = 0; mask < 16; mask++) {
+    const [hideVat, hideVatTotal, hideDiscount, hideDiscountTotal] = [1, 2, 4, 8].map(bit => Boolean(mask & bit));
+    const data = normalizeStockIssue({ ...sample, hideVat, hideDiscount, hideVatTotal, hideDiscountTotal });
     assert.equal(stockIssuePricing(data).total, expected);
     const html = renderToStaticMarkup(<StockIssuePaper data={data} />);
     assert.equal(html.includes('Tiền VAT (đ)'), !hideVat);
     assert.equal(html.includes('VAT %'), !hideVat);
     assert.equal(html.includes('Chiết khấu (đ)'), !hideDiscount);
-    assert.equal(html.includes('Tổng chiết khấu'), !hideDiscount);
+    assert.equal(html.includes('Tổng chiết khấu'), !hideDiscountTotal);
+    assert.equal(html.includes('Tổng VAT'), !hideVatTotal);
     assert.equal((html.match(/<col style=/g) ?? []).length, 9 + (hideVat ? 0 : 2) + (hideDiscount ? 0 : 1));
     assert.ok(html.includes(`colSpan="${8 + (hideVat ? 0 : 2) + (hideDiscount ? 0 : 1)}"`));
     assert.ok(html.includes('Đơn giá'));
@@ -26,6 +28,23 @@ test('four display modes keep payment, quantities and table columns consistent',
     assert.ok(html.includes('204.120'));
     assert.ok(!html.includes('CK sản phẩm'));
   }
+});
+test('old combined print options still apply when reprinting or copying an existing issue', () => {
+  const { hideVatTotal, hideDiscountTotal, ...old } = sample;
+  const data = { ...old, hideVat: true, hideDiscount: true };
+  const html = renderToStaticMarkup(<StockIssuePaper data={data} />);
+  assert.ok(!html.includes('Tổng VAT') && !html.includes('Tổng chiết khấu'));
+  const copy = upgradeStockIssue(data);
+  assert.equal(copy.hideVatTotal, true);
+  assert.equal(copy.hideDiscountTotal, true);
+});
+test('an issue with no issuing company keeps the left header empty and prints its saved payment text', () => {
+  const data = normalizeStockIssue({ ...sample, noCompany: true, paymentInfo: 'Sacombank – STK 0889479189' });
+  assert.equal(data.companyName, '');
+  assert.equal(data.companyAddress, '');
+  const html = renderToStaticMarkup(<StockIssuePaper data={data} />);
+  assert.ok(html.includes('class="paper-letterhead"><div></div><div class="paper-template"'));
+  assert.ok(html.includes('Sacombank – STK 0889479189'));
 });
 test('display settings persist only as booleans and old v2 records keep their shape', () => {
   assert.equal(normalizeStockIssue({ ...sample, hideVat: true }).hideVat, true);

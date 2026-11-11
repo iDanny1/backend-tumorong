@@ -1,4 +1,4 @@
-import { newStockIssue, upgradeStockIssue, type StockIssueData, type StockIssueLine } from './stockIssue';
+import { companyPaymentInfo, newStockIssue, upgradeStockIssue, type StockIssueData, type StockIssueLine } from './stockIssue';
 
 export type IssueDraft = { form: StockIssueData; requestId: string; savedAt?: string };
 export const freshIssue = (creator: string) => upgradeStockIssue(newStockIssue(creator));
@@ -10,6 +10,11 @@ export function recoverIssueDraft(value: unknown, creator: string): IssueDraft |
   const form = freshIssue(creator);
   for (const key of Object.keys(form) as (keyof StockIssueData)[]) {
     if (key !== 'items' && typeof stored.form[key] === typeof form[key]) (form as any)[key] = stored.form[key];
+  }
+  if (typeof stored.form.hideVatTotal !== 'boolean') form.hideVatTotal = form.hideVat;
+  if (typeof stored.form.hideDiscountTotal !== 'boolean') form.hideDiscountTotal = form.hideDiscount;
+  if (typeof stored.form.paymentInfo !== 'string' || (stored.form.noCompany === undefined && !form.paymentInfo)) {
+    form.paymentInfo = companyPaymentInfo(form.companyName, form.noCompany);
   }
   form.items = stored.form.items.slice(0, 100).map((entry: any) => {
     const line: StockIssueLine = { productId: '', name: '', sku: '', unit: '', requested: 1, quantity: 1, unitPrice: 0, vatRate: stored.form.pricingVersion === 2 ? -1 : form.vatRate, discount: 0, discountType: 'amount' };

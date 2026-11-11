@@ -1,11 +1,12 @@
 import React from 'react';
-import { money, moneyInWords, stockIssuePricing, type StockIssueData } from '../../lib/stockIssue';
+import { money, moneyInWords, stockIssueDisplay, stockIssuePricing, type StockIssueData } from '../../lib/stockIssue';
 
 import { LegacyStockIssuePaper } from './LegacyStockIssuePaper';
 
 export function StockIssuePaper({ data, number }: { data: StockIssueData; number?: string }) {
   if (data.pricingVersion !== 2) return <LegacyStockIssuePaper data={data} number={number} />;
   const totals = stockIssuePricing(data);
+  const { hideVatTotal, hideDiscountTotal } = stockIssueDisplay(data);
   const showVat = !data.hideVat;
   const showDiscount = !data.hideDiscount;
   const showNotes = data.items.some(item => item.note?.trim());
@@ -13,16 +14,16 @@ export function StockIssuePaper({ data, number }: { data: StockIssueData; number
   const widthTotal = widths.reduce((sum, width) => sum + width, 0);
   const summarySpan = widths.length - 1 - Number(showNotes);
   const summaries = [
-    ...(showDiscount ? [{ label: 'Tổng chiết khấu', amount: totals.productDiscount + totals.billDiscount }] : []),
+    ...(!hideDiscountTotal ? [{ label: 'Tổng chiết khấu', amount: totals.productDiscount + totals.billDiscount }] : []),
     { label: 'Cộng thành tiền chưa VAT', amount: totals.total - totals.vat },
-    ...(showVat ? [{ label: 'Tổng VAT', amount: totals.vat }] : []),
+    ...(!hideVatTotal ? [{ label: 'Tổng VAT', amount: totals.vat }] : []),
     { label: 'Tổng tiền thanh toán', amount: totals.total },
   ];
   const blank = '........................';
   const [year, month, day] = data.date.split('-');
   return <article className="stock-paper stock-paper-v2" aria-label="Bản in phiếu xuất kho">
     <div className="paper-letterhead">
-      <div><strong>{data.companyName}</strong><div>{data.companyAddress}</div></div>
+      <div>{!data.noCompany && <><strong>{data.companyName}</strong><div>{data.companyAddress}</div></>}</div>
       <div className="paper-template"><strong>Mẫu nội bộ</strong><em>Tham khảo mẫu 02 - VT<br />Bổ sung thông tin bán hàng</em></div>
     </div>
     <div className="paper-title">

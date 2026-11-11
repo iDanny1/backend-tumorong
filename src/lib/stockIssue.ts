@@ -16,6 +16,7 @@ export interface StockIssueData {
   date: string;
   companyName: string;
   companyAddress: string;
+  noCompany?: boolean;
   customerId: string;
   recipient: string;
   phone: string;
@@ -41,6 +42,8 @@ export interface StockIssueData {
   pricingVersion?: 2;
   hideVat?: boolean;
   hideDiscount?: boolean;
+  hideVatTotal?: boolean;
+  hideDiscountTotal?: boolean;
   billDiscount?: number;
   billDiscountType?: "amount" | "percent";
   items: StockIssueLine[];
@@ -56,9 +59,24 @@ export interface SavedStockIssue extends StockIssueData {
 export const COMPANY_NAME = 'CÔNG TY CỔ PHẦN RƯỢU SÂM VIỆT NAM ATUAGIN';
 export const COMPANY_ADDRESS = 'Tòa nhà Bitexco, Số 02, Đường Hải Triều, Phường Sài Gòn, TP. Hồ Chí Minh';
 export const STOCK_ISSUE_COMPANIES = [
-  { name: COMPANY_NAME, address: COMPANY_ADDRESS },
-  { name: 'CÔNG TY CỔ PHẦN SÂM NGỌC LINH TU MƠ RÔNG KON TUM', address: 'Làng Ko Xía 2, Xã Măng Ri, Tỉnh Quảng Ngãi, Việt Nam' },
+  { name: COMPANY_NAME, address: COMPANY_ADDRESS, paymentInfo: 'Sacombank – STK 060325189048' },
+  { name: 'CÔNG TY CỔ PHẦN SÂM NGỌC LINH TU MƠ RÔNG KON TUM', address: 'Làng Ko Xía 2, Xã Măng Ri, Tỉnh Quảng Ngãi, Việt Nam', paymentInfo: 'Agribank – STK 5101201003917' },
+  { name: '', address: '', paymentInfo: 'Sacombank – STK 0889479189' },
 ] as const;
+
+export function companyPaymentInfo(name: string, noCompany = false) {
+  if (!name && !noCompany) return '';
+  return STOCK_ISSUE_COMPANIES.find(company => company.name === (noCompany ? '' : name))?.paymentInfo ?? '';
+}
+
+export function stockIssueDisplay(data: Pick<StockIssueData, 'hideVat' | 'hideDiscount' | 'hideVatTotal' | 'hideDiscountTotal'>) {
+  return {
+    hideVat: data.hideVat ?? false,
+    hideDiscount: data.hideDiscount ?? false,
+    hideVatTotal: data.hideVatTotal ?? data.hideVat ?? false,
+    hideDiscountTotal: data.hideDiscountTotal ?? data.hideDiscount ?? false,
+  };
+}
 
 export function localDate() {
   const now = new Date();
@@ -83,8 +101,9 @@ export function stockIssueTotals(items: StockIssueLine[], vatRate: number) {
 }
 
 export function upgradeStockIssue(data: StockIssueData): StockIssueData {
-  return { ...data, pricingVersion: 2, hideVat: data.hideVat ?? false, hideDiscount: data.hideDiscount ?? false, billDiscount: data.billDiscount ?? 0, billDiscountType: data.billDiscountType ?? 'amount',
-    creatorPhone: data.creatorPhone ?? '', paymentInfo: data.paymentInfo ?? '',
+  return { ...data, pricingVersion: 2, ...stockIssueDisplay(data), billDiscount: data.billDiscount ?? 0, billDiscountType: data.billDiscountType ?? 'amount',
+    noCompany: data.noCompany ?? false, creatorPhone: data.creatorPhone ?? '',
+    paymentInfo: data.paymentInfo ?? companyPaymentInfo(data.companyName, data.noCompany),
     isOrganization: data.isOrganization ?? false, organizationName: data.organizationName ?? '',
     deliveryAddress: data.isOrganization === undefined ? data.deliveryAddress || data.address : data.deliveryAddress,
     items: data.items.map(item => ({ ...item, vatRate: item.vatRate ?? data.vatRate, discount: item.discount ?? 0, discountType: item.discountType ?? 'amount' })) };
@@ -169,8 +188,8 @@ export function normalizeStockIssue(raw: unknown): StockIssueData {
   const vatRate = numeric(input.vatRate, 'Thuế VAT (%)', 100);
   if (input.pricingVersion !== undefined && input.pricingVersion !== 2) throw new Error('Phiên bản phiếu không hợp lệ.');
   const modern = input.pricingVersion === 2;
-  const display: Pick<StockIssueData, 'hideVat' | 'hideDiscount'> = {};
-  for (const key of ['hideVat', 'hideDiscount'] as const) {
+  const display: Partial<ReturnType<typeof stockIssueDisplay>> = {};
+  for (const key of ['hideVat', 'hideDiscount', 'hideVatTotal', 'hideDiscountTotal'] as const) {
     if (input[key] !== undefined) {
       if (typeof input[key] !== 'boolean') throw new Error('Tùy chọn hiển thị phiếu không hợp lệ.');
       display[key] = input[key];
@@ -218,15 +237,18 @@ export function normalizeStockIssue(raw: unknown): StockIssueData {
   if (items.reduce((sum, item) => sum + Math.round(item.quantity * item.unitPrice), 0) > 999_999_999_999) throw new Error('Tiền hàng vượt giới hạn 999.999.999.999 đồng.');
   if (stockIssueAmounts({ items, vatRate, ...pricing } as StockIssueData).total > 999_999_999_999) throw new Error('Tổng phiếu vượt giới hạn 999.999.999.999 đồng.');
   const details: Partial<StockIssueData> = {};
+  if (input.noCompany !== undefined && typeof input.noCompany !== 'boolean') throw new Error('Lựa chọn công ty không hợp lệ.');
+  const noCompany = modern && input.noCompany === true;
+  if (noCompany) details.noCompany = true;
   if (modern && input.isOrganization !== undefined) {
     if (typeof input.isOrganization !== 'boolean') throw new Error('Tùy chọn khách đơn vị không hợp lệ.');
     details.isOrganization = input.isOrganization;
     if (details.isOrganization) details.organizationName = text('organizationName', 'Tên đơn vị');
   }
   if (modern && input.creatorPhone) details.creatorPhone = text('creatorPhone', 'SĐT người lập phiếu', false, 30);
-  if (modern && input.paymentInfo) details.paymentInfo = text('paymentInfo', 'Thông tin thanh toán');
+  if (modern && input.paymentInfo !== undefined) details.paymentInfo = text('paymentInfo', 'Thông tin thanh toán');
   return {
-    ...pricing, ...display, ...details, date, companyName: text('companyName', 'Tên công ty', true), companyAddress: text('companyAddress', 'Địa chỉ công ty', true),
+    ...pricing, ...display, ...details, date, companyName: noCompany ? '' : text('companyName', 'Tên công ty', true), companyAddress: noCompany ? '' : text('companyAddress', 'Địa chỉ công ty', true),
     customerId: text('customerId', 'Mã khách hàng'), recipient: text('recipient', 'Họ và tên người nhận hàng', !modern), phone: text('phone', 'SĐT người nhận', false, 30),
     address: text('address', 'Địa chỉ'), deliveryAddress: text('deliveryAddress', 'Địa điểm giao hàng'),
     reason: text('reason', 'Lý do xuất', true), warehouseId: text('warehouseId', 'Mã kho'), warehouseName: text('warehouseName', 'Kho xuất', true), warehouseLocation: text('warehouseLocation', 'Địa điểm kho'),

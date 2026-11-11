@@ -59,4 +59,5 @@ app.get('/', async (_req, res) => {
   const html = '<!doctype html><html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chạy thử — Phiếu xuất kho</title></head><body><div id="root"></div><script type="module" src="/scripts/stock-issue-demo.tsx"></script></body></html>';
   res.type('html').send(await vite.transformIndexHtml('/', html));
 });
-app.listen(5180, '127.0.0.1', () => console.log('Bản chạy thử phiếu xuất kho: http://127.0.0.1:5180'));
+const port = Number(process.env.STOCK_ISSUE_DEMO_PORT || 5180);
+app.listen(port, '127.0.0.1', () => console.log(`Bản chạy thử phiếu xuất kho: http://127.0.0.1:${port}`));
