@@ -80,7 +80,7 @@ export function StockIssuePaper({ data, number }: { data: StockIssueData; number
     </table>
     <div className="paper-ending">
       <div>Tổng số tiền (Viết bằng chữ): {moneyInWords(totals.total)}</div>
-      <div className="paper-write-in"><span>- Thông tin thanh toán: {data.paymentInfo}</span></div>
+      <div className="paper-payment">- Thông tin thanh toán: {data.paymentInfo}</div>
       <div className="paper-write-in"><span>- Số chứng từ gốc kèm theo: {data.attachments}</span></div>
       <div className="paper-signatures">
         {[

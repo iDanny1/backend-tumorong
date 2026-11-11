@@ -162,7 +162,8 @@
 .stock-paper-v2 .paper-table th, .stock-paper-v2 .paper-table td { padding: 1.1mm .65mm; }
 .stock-paper-v2 .paper-table thead tr:first-child th:first-child { white-space: nowrap; padding-inline: .25mm; }
 .stock-paper-v2 .paper-total:last-child { text-decoration: underline; text-underline-offset: .12em; }
-.paper-write-in { display: flex; align-items: baseline; gap: 1mm; margin-top: 1.5mm; overflow-wrap: anywhere; }
+.paper-payment, .paper-write-in { margin-top: 1.5mm; overflow-wrap: anywhere; }
+.paper-write-in { display: flex; align-items: baseline; gap: 1mm; }
 .paper-write-in::after { content: ''; flex: 1; border-bottom: 1px dotted currentColor; }
 .issue-print-options { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 14px 24px; background: #f5faf7; padding: 14px 20px; border-bottom: 1px solid #ccd8d0; font-size: 14px; }
 .issue-print-options small { color: #52645e; }
