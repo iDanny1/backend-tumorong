@@ -346,7 +346,7 @@ export default function App() {
   };
 
   const renderContent = () => {
-    if (activeMenu === 'Bán tại cửa hàng' && user) {
+    if (activeMenu === 'Xuất phiếu' && user) {
       return <StockIssueManagement key={user.username} products={products} customers={customers} user={user} />;
     }
     if (activeMenu === 'Đơn hàng') {

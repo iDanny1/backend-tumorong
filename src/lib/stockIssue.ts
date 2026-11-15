@@ -13,6 +13,7 @@ export interface StockIssueLine {
 }
 
 export interface StockIssueData {
+  documentType?: 'stock-issue' | 'handover';
   date: string;
   companyName: string;
   companyAddress: string;
@@ -171,7 +172,15 @@ export function moneyInWords(value: number): string {
 // Shared validation: the server independently validates and recomputes every amount.
 export function normalizeStockIssue(raw: unknown): StockIssueData {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Phiếu không hợp lệ.');
-  const input = raw as Record<string, unknown>;
+  let input = raw as Record<string, unknown>;
+  if (input.documentType !== undefined && !['stock-issue', 'handover'].includes(input.documentType as string)) throw new Error('Loại phiếu không hợp lệ.');
+  const handover = input.documentType === 'handover';
+  // Handover documents carry quantities only, including when copied from a priced issue.
+  if (handover) input = { ...input, pricingVersion: 2, vatRate: 0, billDiscount: 0, billDiscountType: 'amount',
+    paymentInfo: '', debitAccount: '', creditAccount: '', accountant: '', director: '',
+    items: Array.isArray(input.items) ? input.items.map(entry => entry && typeof entry === 'object' && !Array.isArray(entry)
+      ? { ...entry, unitPrice: 0, vatRate: 0, discount: 0, discountType: 'amount' } : entry) : input.items,
+  };
   const text = (key: string, label: string, required = false, max = 500) => {
     const value = input[key] ?? '';
     if (typeof value !== 'string' || value.length > max) throw new Error(`${label} không hợp lệ (tối đa ${max} ký tự).`);
@@ -248,7 +257,7 @@ export function normalizeStockIssue(raw: unknown): StockIssueData {
   if (modern && input.creatorPhone) details.creatorPhone = text('creatorPhone', 'SĐT người lập phiếu', false, 30);
   if (modern && input.paymentInfo !== undefined) details.paymentInfo = text('paymentInfo', 'Thông tin thanh toán');
   return {
-    ...pricing, ...display, ...details, date, companyName: noCompany ? '' : text('companyName', 'Tên công ty', true), companyAddress: noCompany ? '' : text('companyAddress', 'Địa chỉ công ty', true),
+    ...(handover ? { documentType: 'handover' as const } : {}), ...pricing, ...display, ...details, date, companyName: noCompany ? '' : text('companyName', 'Tên công ty', true), companyAddress: noCompany ? '' : text('companyAddress', 'Địa chỉ công ty', true),
     customerId: text('customerId', 'Mã khách hàng'), recipient: text('recipient', 'Họ và tên người nhận hàng', !modern), phone: text('phone', 'SĐT người nhận', false, 30),
     address: text('address', 'Địa chỉ'), deliveryAddress: text('deliveryAddress', 'Địa điểm giao hàng'),
     reason: text('reason', 'Lý do xuất', true), warehouseId: text('warehouseId', 'Mã kho'), warehouseName: text('warehouseName', 'Kho xuất', true), warehouseLocation: text('warehouseLocation', 'Địa điểm kho'),

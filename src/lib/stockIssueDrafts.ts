@@ -8,6 +8,7 @@ export function recoverIssueDraft(value: unknown, creator: string): IssueDraft |
   const stored = value as any;
   if (!stored?.form || typeof stored.requestId !== 'string' || !Array.isArray(stored.form.items)) return null;
   const form = freshIssue(creator);
+  if (stored.form.documentType === 'handover') form.documentType = 'handover';
   for (const key of Object.keys(form) as (keyof StockIssueData)[]) {
     if (key !== 'items' && typeof stored.form[key] === typeof form[key]) (form as any)[key] = stored.form[key];
   }

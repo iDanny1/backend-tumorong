@@ -35,14 +35,14 @@ function DayIssues({ day, query, onOpen }: { day: StockIssueDay; query: string; 
   return <details className="issue-day" onToggle={event => setOpen(event.currentTarget.open)}>
     <summary>
       <span className="issue-day-icon"><CalendarDays size={22} /></span>
-      <span className="issue-day-title"><strong>{issueDayLabel(day.date)}</strong><small>Bấm để xem danh sách phiếu xuất</small></span>
-      <span className="issue-day-count">{day.count} phiếu xuất</span>
+      <span className="issue-day-title"><strong>{issueDayLabel(day.date)}</strong><small>Bấm để xem danh sách phiếu</small></span>
+      <span className="issue-day-count">{day.count} phiếu</span>
       <ChevronDown size={20} className="issue-day-chevron" />
     </summary>
     <div className="issue-day-content">
       <div className="issue-history issue-saved-list">{items.map(record => <button type="button" key={record._id} onClick={() => onOpen(record)}>
-        <span className="issue-saved-name"><strong>{record.organizationName || record.recipient || record.phone || 'Chưa nhập người nhận'}</strong><small>{record.number} · {record.warehouseName}</small></span>
-        <span className="issue-saved-amount"><strong>{money(stockIssueAmounts(record).total)} đ</strong><small>Xem phiếu / In lại →</small></span>
+        <span className="issue-saved-name"><strong>{record.organizationName || record.recipient || record.phone || 'Chưa nhập người nhận'}</strong><small>{record.number} · {record.documentType === 'handover' ? 'Biên bản bàn giao' : 'Phiếu xuất kho'} · {record.warehouseName}</small></span>
+        <span className="issue-saved-amount"><strong>{record.documentType === 'handover' ? `${record.items.length} mặt hàng` : `${money(stockIssueAmounts(record).total)} đ`}</strong><small>Xem phiếu / In lại →</small></span>
       </button>)}</div>
       {loading && <p role="status" className="issue-hint">Đang tải phiếu…</p>}
       {error && <div role="alert" className="issue-error">{error}<button type="button" className="issue-button secondary" onClick={() => setRetry(value => value + 1)}>Thử lại</button></div>}

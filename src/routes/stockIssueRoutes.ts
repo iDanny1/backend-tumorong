@@ -85,8 +85,9 @@ router.post('/', async (req, res) => {
       return res.json(serialize(existing));
     }
     const day = data.date.replaceAll('-', '');
-    const counter = await StockIssueCounter.findOneAndUpdate({ _id: day }, { $inc: { value: 1 } }, { upsert: true, new: true });
-    const number = `PXK${day}-${String(counter.value).padStart(4, '0')}`;
+    const prefix = data.documentType === 'handover' ? 'BBBG' : 'PXK';
+    const counter = await StockIssueCounter.findOneAndUpdate({ _id: prefix === 'PXK' ? day : `${prefix}:${day}` }, { $inc: { value: 1 } }, { upsert: true, new: true });
+    const number = `${prefix}${day}-${String(counter.value).padStart(4, '0')}`;
     // Paper records intentionally do not mutate orders, stock, or customer spending.
     const doc = await StockIssue.create({ requestId, number, data, totals: stockIssueAmounts(data) });
     res.status(201).json(serialize(doc));
