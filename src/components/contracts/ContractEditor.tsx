@@ -435,27 +435,48 @@ export function ContractEditor({
     <p><strong>Độc lập – Tự do – Hạnh phúc</strong></p>
     <h2>{resolve(template.title)}</h2><p>Số {resolve('[[contractNumber]]')}</p>
   </div>, {keepNext: true});
-  template.intro.forEach(line => add(<p>{resolve(line)}</p>));
+  template.intro.forEach(line => {
+    const text = resolve(line);
+    const basis = /^\s*([-–—])\s+(Căn cứ\s.+)$/iu.exec(text);
+    if (basis) {
+      add(<p className="contract-basis"><span>{basis[1]}</span><span>{basis[2]}</span></p>);
+    } else {
+      add(<p className="contract-intro-line">{text}</p>);
+    }
+  });
   for (const side of ['a', 'b'] as const) {
     const role = side === 'a' ? template.companyRole : template.partnerRole;
     add(<h3>BÊN {side.toUpperCase()} ({role.toLocaleUpperCase('vi-VN')})</h3>,
       {keepNext: true, anchor: side === 'a' ? anchor('parties') : undefined});
-    template.parties[side].forEach(line => add(<p>{resolve(line)}</p>));
+    template.parties[side].forEach(line => add(<p className="contract-party-detail">{resolve(line)}</p>));
   }
-  add(<p>{resolve(template.partyIntro)}</p>);
+  add(<p className="contract-party-intro">{resolve(template.partyIntro)}</p>);
   function addClause(target: ClauseLocation, number: string, clause: ContractClause) {
     const isMinor = Boolean(target.clauseId);
     const title = clause.title && resolve(clause.title);
     const body = [...clause.paragraphs];
+    const label = <strong className="contract-clause-number">{number}. </strong>;
     const heading = title
-      ? <h3>{number}. {title}</h3>
-      : <p><strong>{number}.</strong> {resolve(body.shift() ?? '')}</p>;
+      ? <h3>{label}{title}</h3>
+      : <p>{label}{resolve(body.shift() ?? '')}</p>;
     const blockClass = isMinor ? 'contract-subclause' : 'contract-article';
     const handleMenu = (event: MouseEvent) => openContextMenu(event, target);
     add(<section className={blockClass + ' contract-block'} onContextMenu={handleMenu}>
       <div className="contract-block-heading">{heading}{actionButton(target, number)}</div>
     </section>, {anchor: anchor(clause.id), keepNext: Boolean(title && (body.length || clause.children.length))});
-    body.forEach(line => add(<div className="contract-body-line" onContextMenu={handleMenu}><p>{resolve(line)}</p></div>));
+    let withinLetteredPoint = false;
+    body.forEach(line => {
+      const text = resolve(line);
+      const marker = /^([a-zđ]\)|[•–—-])\s+(.+)$/isu.exec(text);
+      const lettered = marker?.[1].endsWith(')');
+      if (lettered || !marker) withinLetteredPoint = Boolean(lettered);
+      const nestedBullet = marker && !lettered && withinLetteredPoint;
+      add(<div className={'contract-body-line' + (isMinor ? ' contract-minor-body' : '')} onContextMenu={handleMenu}>
+        {marker ? <p className={'contract-list-point' + (nestedBullet ? ' contract-nested-point' : '')}>
+          <span className="contract-point-marker">{marker[1]} </span>{marker[2]}
+        </p> : <p className="contract-prose">{text}</p>}
+      </div>);
+    });
   }
   articles.forEach((article, i) => {
     addClause({articleId: article.id}, 'Điều ' + (i + 1), article);

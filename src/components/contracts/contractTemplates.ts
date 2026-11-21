@@ -93,10 +93,10 @@ export const contractTemplates: ContractTemplate[] = [
       a: [
         "Tên doanh nghiệp: CÔNG TY CỔ PHẦN SÂM NGỌC LINH TU MƠ RÔNG KON TUM",
         "Mã số doanh nghiệp: 6101196670",
-        "Địa chỉ trụ sở: Làng Ko Xía 2, Xã Măng Ri, Tỉnh Quảng Ngãi, Việt Nam (ghi đúng theo GCN ĐKDN hiện hành)",
+        "Địa chỉ trụ sở: Làng Ko Xía 2, Xã Măng Ri, Tỉnh Quảng Ngãi, Việt Nam ",
         "Văn phòng / Kho nhận: 38/15 Nguyễn Giản Thanh, Phường Hòa Hưng, TP. Hồ Chí Minh",
         "Điện thoại: [[companyPhone]] | Email giao dịch: [[companyEmail]]",
-        "Tài khoản ngân hàng: 5101201003917 – Ngân hàng NN&PTNT Việt Nam (Agribank) - CN Đắk Tô",
+        "Tài khoản ngân hàng: 5101201003917 – Ngân hàng Agribank - CN Đắk Tô",
         "Người đại diện: Ông TRẦN ĐỨC AN | Chức vụ: Chủ tịch HĐQT kiêm Giám đốc"
       ],
       b: [
@@ -729,10 +729,10 @@ export const contractTemplates: ContractTemplate[] = [
       a: [
         "Tên doanh nghiệp: CÔNG TY CỔ PHẦN SÂM NGỌC LINH TU MƠ RÔNG KON TUM",
         "Mã số doanh nghiệp: 6101196670",
-        "Địa chỉ trụ sở: Làng Ko Xía 2, Xã Măng Ri, Tỉnh Quảng Ngãi, Việt Nam (ghi đúng theo GCN ĐKDN hiện hành)",
+        "Địa chỉ trụ sở: Làng Ko Xía 2, Xã Măng Ri, Tỉnh Quảng Ngãi, Việt Nam ",
         "Địa chỉ nhận hàng/GD: 38/15 Nguyễn Giản Thanh, Phường Hòa Hưng, TP. Hồ Chí Minh",
         "Điện thoại: [[companyPhone]] | Email giao dịch: [[companyEmail]]",
-        "Tài khoản ngân hàng: 5101201003917 – Ngân hàng NN&PTNT Việt Nam (Agribank) - CN Đắk Tô",
+        "Tài khoản ngân hàng: 5101201003917 – Ngân hàng Agribank - CN Đắk Tô",
         "Người đại diện: Ông TRẦN ĐỨC AN | Chức vụ: Chủ tịch HĐQT kiêm Giám đốc"
       ],
       b: [
@@ -1460,7 +1460,7 @@ export const contractTemplates: ContractTemplate[] = [
       a: [
         "Tên doanh nghiệp: CÔNG TY CỔ PHẦN RƯỢU SÂM VIỆT NAM ATUAGIN",
         "Mã số doanh nghiệp: 0318645641",
-        "Địa chỉ trụ sở: Tòa nhà Bitexco, Số 02 Đường Hải Triều, Phường Sài Gòn, TP. Hồ Chí Minh (ghi đúng theo GCN ĐKDN hiện hành)",
+        "Địa chỉ trụ sở: Tòa nhà Bitexco, Số 02 Đường Hải Triều, Phường Sài Gòn, TP. Hồ Chí Minh ",
         "Điện thoại: 0974 30 37 34 | Email: admin@tumorong.com",
         "Tài khoản ngân hàng: 060325189048 – Ngân hàng TMCP Sài Gòn Thương Tín (Sacombank) - TP.HCM",
         "Người đại diện: Ông NGUYỄN NHẬT TRƯỜNG | Chức vụ: Tổng Giám đốc"
