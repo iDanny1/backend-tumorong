@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, List, MoreHorizontal, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { ArrowLeft, List, MoreHorizontal, Pencil, Plus, Printer, Save, Trash2, X } from 'lucide-react';
 import {
   findInvalidReferences,
   hasPlaceholder,
@@ -18,6 +18,7 @@ import {
   type ContractValues,
 } from './contractTypes';
 import './contract-editor.css';
+import {ContractPages, type PaperUnit} from './ContractPages';
 
 interface ContractEditorProps {
   template: ContractTemplate;
@@ -25,6 +26,9 @@ interface ContractEditorProps {
   articles: ContractClause[];
   onArticlesChange: (articles: ContractClause[]) => void;
   onBack: () => void;
+  onSave: () => void;
+  onLibrary: () => void;
+  status: string;
 }
 
 type ClauseLocation = { articleId: string; clauseId?: string };
@@ -232,7 +236,30 @@ export function ContractEditor({
   articles,
   onArticlesChange,
   onBack,
+  onSave, onLibrary, status,
 }: ContractEditorProps) {
+  const paper = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let printable: HTMLElement | null = null;
+    function clear() { printable?.remove(); printable = null; }
+    function prepare() {
+      clear();
+      if (!paper.current?.getClientRects().length) return;
+      printable = paper.current.cloneNode(true) as HTMLElement;
+      printable.classList.add('contract-print');
+      printable.querySelectorAll('button').forEach(el => el.remove());
+      printable.style.zoom = '1';
+      printable.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+      document.body.append(printable);
+    }
+    window.addEventListener('beforeprint', prepare);
+    window.addEventListener('afterprint', clear);
+    return () => {
+      clear();
+      window.removeEventListener('beforeprint', prepare);
+      window.removeEventListener('afterprint', clear);
+    };
+  }, []);
   const anchorPrefix = useId();
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [form, setForm] = useState<ClauseForm | null>(null);
@@ -372,10 +399,6 @@ export function ContractEditor({
     });
   }
 
-  function renderParagraphs(paragraphs: string[]) {
-    return paragraphs.map((paragraph, index) => <p key={index}>{resolve(paragraph)}</p>);
-  }
-
   function actionButton(target: ClauseLocation, number: string) {
     return (
       <button
@@ -403,6 +426,74 @@ export function ContractEditor({
     );
   }
 
+  const units: PaperUnit[] = [];
+  function add(content: ReactNode, options: Partial<Omit<PaperUnit, 'content'>> = {}) {
+    units.push({key: String(units.length), content, ...options});
+  }
+  add(<div className="contract-paper-title">
+    <p><strong>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</strong></p>
+    <p><strong>Độc lập – Tự do – Hạnh phúc</strong></p>
+    <h2>{resolve(template.title)}</h2><p>Số {resolve('[[contractNumber]]')}</p>
+  </div>, {keepNext: true});
+  template.intro.forEach(line => add(<p>{resolve(line)}</p>));
+  for (const side of ['a', 'b'] as const) {
+    const role = side === 'a' ? template.companyRole : template.partnerRole;
+    add(<h3>BÊN {side.toUpperCase()} ({role.toLocaleUpperCase('vi-VN')})</h3>,
+      {keepNext: true, anchor: side === 'a' ? anchor('parties') : undefined});
+    template.parties[side].forEach(line => add(<p>{resolve(line)}</p>));
+  }
+  add(<p>{resolve(template.partyIntro)}</p>);
+  function addClause(target: ClauseLocation, number: string, clause: ContractClause) {
+    const isMinor = Boolean(target.clauseId);
+    const title = clause.title && resolve(clause.title);
+    const body = [...clause.paragraphs];
+    const heading = title
+      ? <h3>{number}. {title}</h3>
+      : <p><strong>{number}.</strong> {resolve(body.shift() ?? '')}</p>;
+    const blockClass = isMinor ? 'contract-subclause' : 'contract-article';
+    const handleMenu = (event: MouseEvent) => openContextMenu(event, target);
+    add(<section className={blockClass + ' contract-block'} onContextMenu={handleMenu}>
+      <div className="contract-block-heading">{heading}{actionButton(target, number)}</div>
+    </section>, {anchor: anchor(clause.id), keepNext: Boolean(title && (body.length || clause.children.length))});
+    body.forEach(line => add(<div className="contract-body-line" onContextMenu={handleMenu}><p>{resolve(line)}</p></div>));
+  }
+  articles.forEach((article, i) => {
+    addClause({articleId: article.id}, 'Điều ' + (i + 1), article);
+    article.children.forEach((clause, j) => addClause({articleId: article.id, clauseId: clause.id}, (i + 1) + '.' + (j + 1), clause));
+  });
+  template.closing.forEach(line => add(<p>{resolve(line)}</p>));
+  add(<SignatureLines rows={[
+    ['ĐẠI DIỆN BÊN A', 'ĐẠI DIỆN BÊN B'],
+    ['(Ký, ghi rõ họ tên và đóng dấu)', '(Ký, ghi rõ họ tên và đóng dấu)'],
+    [template.companyRepresentative, resolve('[[partnerRepresentative]]')],
+  ]} />, {anchor: anchor('closing')});
+  template.annexes.forEach((annex, i) => {
+    add(<h3 className="contract-annex-title">{resolve(annex.title)}</h3>,
+      {newPage: true, keepNext: true, anchor: anchor('annex-' + i)});
+    annex.blocks.forEach(block => {
+      if ('text' in block) {
+        const isHeading = /^[IVX]+\.\s/.test(block.text);
+        add(isHeading ? <h4>{resolve(block.text)}</h4> : <p>{resolve(block.text)}</p>, {keepNext: isHeading});
+        return;
+      }
+      const rows = block.rows.map(row => row.map(cell => resolve(cell)));
+      if (rows.length === 3 && rows[1].every(cell => cell.startsWith('(Ký,'))) {
+        add(<SignatureLines rows={rows} />); return;
+      }
+      const hasHeader = /^(STT|Hạng mục|Tên |Nội dung|Thành phần)/i.test(rows[0]?.[0] ?? '');
+      const header = hasHeader ? units.length : undefined;
+      const columnWidths = rows[0]?.[0] === 'STT'
+        ? (rows[0].length === 6 ? [7, 25, 13, 24, 16, 15] : [7, 23, 16, 9, 12, 17, 16])
+        : rows[0]?.length === 3 ? [28, 48, 24] : undefined;
+      rows.forEach((row, index) => add(
+        <table className={'contract-annex-row' + (hasHeader && !index ? ' contract-table-header' : '')}>
+          {columnWidths && <colgroup>{columnWidths.map((width, j) => <col key={j} style={{width: width + '%'}} />)}</colgroup>}
+          <tbody><tr>{row.map((cell, j) => <td key={j}>{cell}</td>)}</tr></tbody>
+        </table>, {tableHeader: header, keepNext: hasHeader && !index}));
+    });
+  });
+  const layoutKey = JSON.stringify([template.id, values, articles]);
+
   return (
     <div className="contract-editor">
       <div className="contract-editor-toolbar">
@@ -417,6 +508,10 @@ export function ContractEditor({
         >
           <Plus size={17} aria-hidden /> Thêm điều
         </button>
+        <button className="contract-editor-button" type="button" onClick={onLibrary}>Hợp đồng đã lưu</button>
+        <button className="contract-editor-button" type="button" onClick={() => window.print()}><Printer size={17} /> In hợp đồng</button>
+        <button className="contract-editor-button contract-editor-primary" type="button" onClick={onSave}><Save size={17} /> Lưu hợp đồng</button>
+        {status && <p className="basis-full text-sm" role="status">{status}</p>}
       </div>
       {notice && (
         <div className="contract-editor-notice">
@@ -432,101 +527,7 @@ export function ContractEditor({
         </div>
       )}
       <div className="contract-editor-layout">
-        <article className="contract-paper" aria-label="Nội dung hợp đồng">
-          <header className="contract-paper-header">
-            <div className="contract-paper-title">
-              <p><strong>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</strong></p>
-              <p><strong>Độc lập – Tự do – Hạnh phúc</strong></p>
-              <h2>{resolve(template.title)}</h2>
-              <p>Số {resolve('[[contractNumber]]')}</p>
-            </div>
-            {renderParagraphs(template.intro)}
-          </header>
-          <section className="contract-parties" id={anchor('parties')} tabIndex={-1} aria-label="Các bên">
-            <div>
-              <h3>BÊN A ({template.companyRole.toLocaleUpperCase('vi-VN')})</h3>
-              {renderParagraphs(template.parties.a)}
-            </div>
-            <div>
-              <h3>BÊN B ({template.partnerRole.toLocaleUpperCase('vi-VN')})</h3>
-              {renderParagraphs(template.parties.b)}
-            </div>
-          </section>
-          {template.partyIntro && <p>{resolve(template.partyIntro)}</p>}
-          {articles.map((article, index) => (
-            <section
-              className="contract-article contract-block"
-              id={anchor(article.id)}
-              key={article.id}
-              tabIndex={-1}
-              onContextMenu={(event) => openContextMenu(event, { articleId: article.id })}
-            >
-              <div className="contract-block-heading">
-                <h3>Điều {index + 1}. {resolve(article.title)}</h3>
-                {actionButton({ articleId: article.id }, `Điều ${index + 1}`)}
-              </div>
-              {renderParagraphs(article.paragraphs)}
-              {article.children.map((clause, subIndex) => {
-                const target = { articleId: article.id, clauseId: clause.id };
-                const number = `${index + 1}.${subIndex + 1}`;
-                const [first, ...remaining] = clause.paragraphs;
-                return (
-                  <section
-                    className="contract-subclause contract-block"
-                    id={anchor(clause.id)}
-                    key={clause.id}
-                    tabIndex={-1}
-                    aria-label={`Khoản ${number}`}
-                    onContextMenu={(event) => openContextMenu(event, target)}
-                  >
-                    <div className="contract-block-heading">
-                      {clause.title ? (
-                        <h4>{number}. {resolve(clause.title)}</h4>
-                      ) : (
-                        <p><strong>{number}.</strong> {first && resolve(first)}</p>
-                      )}
-                      {actionButton(target, `Khoản ${number}`)}
-                    </div>
-                    {renderParagraphs(clause.title ? clause.paragraphs : remaining)}
-                  </section>
-                );
-              })}
-            </section>
-          ))}
-          <section className="contract-paper-closing" id={anchor('closing')} tabIndex={-1} aria-label="Phần ký">
-            {renderParagraphs(template.closing)}
-            <SignatureLines rows={[
-              ['ĐẠI DIỆN BÊN A', 'ĐẠI DIỆN BÊN B'],
-              ['(Ký, ghi rõ họ tên và đóng dấu)', '(Ký, ghi rõ họ tên và đóng dấu)'],
-              [template.companyRepresentative, resolve('[[partnerRepresentative]]')],
-            ]} />
-          </section>
-          {template.annexes.map((annex, index) => (
-            <section className="contract-annex" id={anchor(`annex-${index}`)} tabIndex={-1} key={index}>
-              <h3>{resolve(annex.title)}</h3>
-              {annex.blocks.map((block, blockIndex) => {
-                if ('text' in block) return <p key={blockIndex}>{resolve(block.text)}</p>;
-                const rows = block.rows.map((row) => row.map((cell) => resolve(cell)));
-                if (rows.length === 3 && rows[1].every((cell) => cell.startsWith('(Ký,'))) {
-                  return <SignatureLines key={blockIndex} rows={rows} />;
-                }
-                return (
-                  <div className="contract-table-scroll" key={blockIndex}>
-                    <table>
-                      <tbody>
-                        {rows.map((row, rowIndex) => (
-                          <tr key={rowIndex}>
-                            {row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                );
-              })}
-            </section>
-          ))}
-        </article>
+        <ContractPages units={units} paperRef={paper} layoutKey={layoutKey} />
         <aside className="contract-editor-aside">
           <nav className="contract-editor-toc" aria-label="Mục lục hợp đồng">
             <h2><List size={17} aria-hidden /> Mục lục</h2>

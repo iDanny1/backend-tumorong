@@ -5,6 +5,11 @@
 }
 
 .contract-editor-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding: .5rem;
+  background: #f8fafc;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -72,9 +77,10 @@
 .contract-paper {
   min-width: 0;
   width: 100%;
-  max-width: 56rem;
+  max-width: 210mm;
+  min-height: 297mm;
   margin: 0 auto;
-  padding: clamp(1.25rem, 4.3cqw, 3.5rem);
+  padding: clamp(1.25rem, 5cqw, 18mm);
   border: 1px solid #dfe5e2;
   border-radius: .35rem;
   box-shadow: 0 3px 10px #1536280a;
@@ -219,7 +225,7 @@
 
 .contract-editor-aside {
   position: sticky;
-  top: .75rem;
+  top: 5rem;
   min-width: 0;
 }
 
@@ -455,4 +461,47 @@
   .contract-editor-toc {
     max-height: 11rem;
   }
+}
+
+.contract-page-viewport { min-width: 0; position: relative; }
+.contract-sheets { width: 210mm; margin-inline: auto; }
+.contract-paper.contract-sheet, .contract-paper.contract-measure {
+  box-sizing: border-box; max-width: none; min-height: 0; font: 12pt/1.4 "Times New Roman", Times, serif;
+  border: 0; border-radius: 0;
+}
+.contract-paper.contract-sheet {
+  position: relative; width: 210mm; height: 297mm; margin: 0 0 6mm;
+  padding: 18mm 16mm 18mm 20mm; box-shadow: 0 1px 4px #172d242d;
+}
+.contract-sheet h2, .contract-measure h2 { font-size: 16pt; }
+.contract-paper.contract-measure {
+  position: absolute; left: -100000px; top: 0; width: 174mm; height: 261mm;
+  padding: 0; margin: 0; visibility: hidden; pointer-events: none;
+}
+.contract-unit { display: flow-root; scroll-margin-top: 6rem; }
+.contract-unit p { orphans: 2; widows: 2; }
+.contract-unit .contract-article { margin-top: 8pt; }
+.contract-unit .contract-subclause { margin: 3pt 0; }
+.contract-unit .contract-block-heading { display: block; position: relative; }
+.contract-unit .contract-block-button {
+  position: absolute; right: -8mm; top: 0; width: 6mm; height: 6mm;
+}
+.contract-annex-title { text-align: center; padding-bottom: 8pt; }
+.contract-annex-row { table-layout: fixed; margin: 0; width: 100%; min-width: 0 !important; }
+.contract-table-header { font-weight: bold; }
+.contract-page-number { position: absolute; right: 16mm; bottom: 7mm; font: 10pt "Times New Roman", serif; color: #475569; }
+.contract-long-clip { height: 260mm; overflow: hidden; }
+.contract-long-columns { width: 174mm; height: 260mm; column-width: 174mm; column-gap: 0; column-fill: auto; }
+.contract-print { display: none; }
+@page contractSheet { size: A4 portrait; margin: 0; }
+@media print {
+  body:has(> .contract-print) > :not(.contract-print) { display: none !important; }
+  html:has(.contract-print), body:has(> .contract-print) {
+    height: auto !important; overflow: visible !important; margin: 0; padding: 0; background: white;
+  }
+  body > .contract-print { display: block; page: contractSheet; width: 210mm; margin: 0; }
+  .contract-print .contract-sheet {
+    page: contractSheet; height: 296.9mm; break-after: page; margin: 0; box-shadow: none;
+  }
+  .contract-print .contract-sheet:last-child { break-after: auto; }
 }

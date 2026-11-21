@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ArrowLeft, ArrowRight, FileText } from 'lucide-react';
 import { ContractEditor } from './ContractEditor';
 import { contractTemplates } from './contractTemplates';
+import { api } from '../../lib/api';
 import {
   contractText, formatContractValues, hasPlaceholder, renderContractText, validateContractField,
   type ContractClause, type ContractField, type ContractTemplate, type ContractValues,
@@ -15,6 +16,9 @@ const groups: Array<{ key: ContractField['group']; title: string }> = [
 ];
 
 const steps = ['Chọn loại hợp đồng', 'Điền thông tin', 'Xem và chỉnh sửa'];
+interface LibraryRow {
+  _id: string; template: { name: string }; values: {contractNumber: string; partnerName: string};
+}
 const primaryButton = 'inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800';
 const secondaryButton = 'inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50';
 
@@ -26,6 +30,24 @@ export function ContractManagement() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [documentError, setDocumentError] = useState('');
   const heading = React.useRef<HTMLHeadingElement>(null);
+  const [record, setRecord] = useState(() => ({id: crypto.randomUUID() as string, revision: 0}));
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [library, setLibrary] = useState<LibraryRow[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [libraryError, setLibraryError] = useState('');
+  React.useEffect(() => {
+    if (step !== 0) return;
+    let active = true;
+    setLibraryError('');
+    setLibrary([]);
+    setHasMore(false);
+    api.get('/api/contracts?offset=' + offset).then(page => {
+      if (active) { setLibrary(page.items); setHasMore(page.hasMore); }
+    }).catch(() => { if (active) setLibraryError('Chưa tải được danh sách hợp đồng đã lưu.'); });
+    return () => { active = false; };
+  }, [step, offset]);
   const documentValues = template ? formatContractValues(template, values) : {};
 
   function goToStep(next: number) {
@@ -36,8 +58,10 @@ export function ContractManagement() {
     });
   }
 
-  function selectTemplate(next: ContractTemplate) {
-    if (next.id !== template?.id) {
+  function selectTemplate(next: ContractTemplate, fresh = false) {
+    if (fresh || next.id !== template?.id) {
+      setRecord({id: crypto.randomUUID(), revision: 0});
+      setStatus('');
       setTemplate(next);
       setValues(Object.fromEntries(next.fields.map(field => [field.key, field.defaultValue ?? ''])));
       setArticles(next.articles);
@@ -48,6 +72,7 @@ export function ContractManagement() {
   }
 
   function updateField(field: ContractField, value: string) {
+    setStatus('');
     setValues(current => ({ ...current, [field.key]: value }));
     if (errors[field.key]) {
       setErrors(current => ({ ...current, [field.key]: validateContractField(field, value) }));
@@ -78,8 +103,37 @@ export function ContractManagement() {
     goToStep(2);
   }
 
+  async function save() {
+    if (!template || busy) return;
+    setBusy(true);
+    setStatus('');
+    try {
+      const result = await api.put('/api/contracts/' + record.id, {revision: record.revision, templateId: template.id, values, articles});
+      setRecord({...record, revision: result.revision});
+      setStatus('Đã lưu hợp đồng ' + values.contractNumber + '.');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Chưa lưu được hợp đồng.');
+    } finally { setBusy(false); }
+  }
+
+  async function reopen(id: string) {
+    setBusy(true);
+    try {
+      const saved = await api.get('/api/contracts/' + id);
+      setTemplate(saved.template);
+      setValues(saved.values);
+      setArticles(saved.articles);
+      setRecord({id, revision: saved.revision});
+      setErrors({});
+      setDocumentError('');
+      setStatus('');
+      goToStep(2);
+    } catch { setLibraryError('Chưa mở được hợp đồng. Vui lòng thử lại.'); }
+    finally { setBusy(false); }
+  }
+
   return (
-    <div className={step === 2 ? 'mx-auto w-full max-w-[96rem] pb-8' : 'mx-auto w-full max-w-5xl pb-8'}>
+    <div inert={busy} aria-busy={busy} className={step === 2 ? 'mx-auto w-full max-w-[96rem] pb-8' : 'mx-auto w-full max-w-5xl pb-8'}>
       <div className="mb-6">
         <h1 ref={heading} tabIndex={-1} className="scroll-mt-3 text-2xl font-bold text-slate-900 outline-none">Hợp đồng</h1>
         <ol aria-label="Các bước soạn hợp đồng" className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm">
@@ -119,6 +173,16 @@ export function ContractManagement() {
               </button>
             ))}
           </div>
+          {template && <button type="button" className={secondaryButton + ' mt-3'} onClick={() => selectTemplate(contractTemplates.find(t => t.id === template.id)!, true)}>Tạo hợp đồng mới cùng mẫu</button>}
+          <h2 className="mt-8 mb-3 text-lg font-semibold text-slate-900">Hợp đồng đã lưu</h2>
+          {libraryError && <p role="alert">{libraryError}</p>}
+          {library?.map(row => <button key={row._id} type="button" onClick={() => reopen(row._id)}
+            className="mb-2 block w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-left hover:border-emerald-600">
+            <strong>{row.values.contractNumber} · {row.values.partnerName}</strong>
+            <span className="block text-sm text-slate-600">{row.template.name}</span>
+          </button>)}
+          {offset > 0 && <button type="button" className={secondaryButton} onClick={() => setOffset(offset - 30)}>Trang trước</button>}
+          {hasMore && <button type="button" className={secondaryButton} onClick={() => setOffset(offset + 30)}>Trang sau</button>}
         </section>
       )}
 
@@ -184,7 +248,10 @@ export function ContractManagement() {
       )}
 
       {step === 2 && template && (
-        <ContractEditor template={template} values={documentValues} articles={articles} onArticlesChange={setArticles} onBack={() => goToStep(1)} />
+        <ContractEditor template={template} values={documentValues} articles={articles}
+          onArticlesChange={next => { setArticles(next); setStatus(''); }}
+          onSave={save} status={busy ? 'Đang lưu…' : status}
+          onLibrary={() => { setOffset(0); goToStep(0); }} onBack={() => goToStep(1)} />
       )}
     </div>
   );

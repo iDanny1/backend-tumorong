@@ -11,6 +11,7 @@ import spinRouter from './src/routes/spinRoutes.js';
 import advancedVoucherRouter from './src/routes/voucherRoutes.js';
 import stockIssueRouter, { StockIssue } from './src/routes/stockIssueRoutes.js';
 import quotationRouter from './src/routes/quotationRoutes.js';
+import contractRouter from './src/routes/contractRoutes.js';
 import productRouter from './src/routes/productRoutes.js';
 import orderRouter from './src/routes/orderRoutes.js';
 import categoryRouter from './src/routes/categoryRoutes.js';
@@ -99,6 +100,7 @@ async function startServer() {
   app.use('/api/vouchers-v2', advancedVoucherRouter);
   app.use('/api/stock-issues', stockIssueRouter);
   app.use('/api/quotations', express.json({ limit: '3mb' }), quotationRouter);
+  app.use('/api/contracts', contractRouter);
 
   // Register spreadsheet endpoints before customer /:id routes.
   app.use(spreadsheetRouter);
