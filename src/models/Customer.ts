@@ -11,6 +11,9 @@ export const customerSchema = new Schema({
   departmentAddress: String,
   deliveryAddress: String,
   importKey: String,
+  // Aliases for normalized profiles captured on saved documents. Older records
+  // omit this field until they are matched, so the sparse index can be added safely.
+  documentKeys: { type: [String], default: undefined },
   ordersCount: { type: Number, default: 0 },
   totalSpent: { type: Number, default: 0 },
   remainingPoints: { type: Number, default: 0 },
@@ -21,6 +24,7 @@ export const customerSchema = new Schema({
   createdAt: { type: String, default: () => new Date().toISOString() },
 });
 customerSchema.index({ importKey: 1 }, { unique: true, sparse: true });
+customerSchema.index({ documentKeys: 1 }, { unique: true, sparse: true });
 customerSchema.index({ phone: 1 }, { name: 'customer_phone_lookup' });
 export const Customer = mongoose.model('Customer', customerSchema);
 
@@ -29,6 +33,7 @@ export async function prepareCustomerIndexes() {
   // Install the replacement lookup before removing the legacy constraint.
   await Customer.collection.createIndex({ phone: 1 }, { name: 'customer_phone_lookup' });
   await Customer.collection.createIndex({ importKey: 1 }, { unique: true, sparse: true });
+  await Customer.collection.createIndex({ documentKeys: 1 }, { unique: true, sparse: true });
   const indexes = await Customer.collection.indexes();
   const legacy = indexes.find(index => index.name === 'phone_1' && index.unique && Object.keys(index.key).length === 1 && index.key.phone === 1);
   if (legacy) await Customer.collection.dropIndex(legacy.name!);

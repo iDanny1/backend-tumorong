@@ -28,6 +28,7 @@ import { CustomerUI } from './components/CustomerUI';
 import { Order, User, Category, Product, Customer } from './types';
 import { api, ApiError } from './lib/api';
 import { StockIssueManagement } from './components/stock-issues/StockIssueManagement';
+import { ContractManagement } from './components/contracts/ContractManagement';
 
 export default function App() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -42,6 +43,7 @@ export default function App() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [activeMenu, setActiveMenu] = useState('Đơn hàng');
+  const [contractsOpened, setContractsOpened] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showProductModal, setShowProductModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -52,9 +54,13 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'admin' | 'customer'>('admin');
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const canManageContracts = ['admin', 'sales'].includes(user?.role.toLowerCase() ?? '');
+  const showContracts = canManageContracts && activeMenu === 'Hợp đồng';
 
   const [newProduct, setNewProduct] = useState({
     name: '',
+    unit: '',
+    packaging: '',
     price: 0,
     categoryIds: [] as string[],
     categoryNames: [] as string[],
@@ -195,6 +201,8 @@ export default function App() {
       setShowProductModal(false);
       setNewProduct({
         name: '',
+        unit: '',
+        packaging: '',
         price: 0,
         categoryIds: [],
         categoryNames: [],
@@ -215,7 +223,8 @@ export default function App() {
 
   const handleUpdateProduct = async (updatedProduct: Product) => {
     try {
-      await api.put(`/api/products/${updatedProduct._id}`, updatedProduct);
+      const { _id, stock, warehouseStock, ...details } = updatedProduct;
+      await api.put(`/api/products/${_id}`, details);
       setEditingProduct(null);
       fetchProducts();
     } catch (err) {
@@ -347,7 +356,7 @@ export default function App() {
 
   const renderContent = () => {
     if (activeMenu === 'Xuất phiếu' && user) {
-      return <StockIssueManagement key={user.username} products={products} customers={customers} user={user} />;
+      return <StockIssueManagement key={user.username} products={products} customers={customers} user={user} onCustomersChanged={fetchCustomers} />;
     }
     if (activeMenu === 'Đơn hàng') {
       if (selectedOrder) {
@@ -524,7 +533,10 @@ export default function App() {
         sidebarOpen={sidebarOpen} 
         setSidebarOpen={setSidebarOpen}
         activeMenu={activeMenu}
-        setActiveMenu={setActiveMenu}
+        setActiveMenu={menu => {
+          if (menu === 'Hợp đồng') setContractsOpened(true);
+          setActiveMenu(menu);
+        }}
         user={user}
         onLogout={handleLogout}
       />
@@ -552,7 +564,12 @@ export default function App() {
         />
 
         <div className={`flex-1 overflow-y-auto p-4 md:p-6 ${activeMenu !== 'Đơn hàng' ? 'pt-2 md:pt-3' : ''}`}>
-          {renderContent()}
+          {!showContracts && renderContent()}
+          {canManageContracts && contractsOpened && (
+            <section hidden={!showContracts}>
+              <ContractManagement key={user?.username} />
+            </section>
+          )}
         </div>
       </main>
 

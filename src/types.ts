@@ -97,6 +97,7 @@ export interface Product {
   stock: number;
   warehouseStock?: { [warehouseId: string]: number };
   unit?: string;
+  packaging?: string;
   type: string;
   platform: string;
   active: boolean;

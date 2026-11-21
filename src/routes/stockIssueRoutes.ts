@@ -1,7 +1,8 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import mongoose, { Schema } from 'mongoose';
 import { normalizeStockIssue, stockIssueAmounts } from '../lib/stockIssue.js';
 import { STOCK_ISSUE_HISTORY_START, STOCK_ISSUE_HISTORY_PAGE_SIZE, STOCK_ISSUE_DAY_PAGE_SIZE } from '../lib/stockIssueHistory.js';
+import { customerFromStockIssue, syncDocumentCustomer } from '../services/documentCustomer.js';
 
 const issueSchema = new Schema({
   requestId: { type: String, required: true, unique: true },
@@ -15,6 +16,17 @@ const counterSchema = new Schema({ _id: String, value: { type: Number, default: 
 const StockIssueCounter = mongoose.model('StockIssueCounter', counterSchema);
 const router = Router();
 const serialize = (doc: any) => ({ ...doc.data, _id: String(doc._id), number: doc.number, requestId: doc.requestId, createdAt: doc.createdAt });
+
+async function respondWithCustomer(res: Response, doc: any, status = 200) {
+  try {
+    // Run on identical retries too: a saved paper can recover a failed CRM write.
+    await syncDocumentCustomer(customerFromStockIssue(doc.data));
+    return res.status(status).json(serialize(doc));
+  } catch {
+    return res.status(503).json({ documentSaved: true, requestId: doc.requestId, number: doc.number,
+      message: 'Phiếu đã lưu nhưng chưa lưu được khách hàng. Vui lòng bấm lưu lại để hoàn tất; hệ thống sẽ giữ nguyên số phiếu.' });
+  }
+}
 
 const historySearch = (value: unknown) => {
   const query = typeof value === 'string' ? value.trim().slice(0, 150) : '';
@@ -82,7 +94,7 @@ router.post('/', async (req, res) => {
     const existing = await StockIssue.findOne({ requestId }).lean();
     if (existing) {
       if (JSON.stringify(existing.data) !== JSON.stringify(data)) return res.status(409).json({ message: 'Phiếu này đã được lưu với nội dung khác. Hãy mở Phiếu đã lưu để kiểm tra và tạo bản sao nếu cần sửa.' });
-      return res.json(serialize(existing));
+      return respondWithCustomer(res, existing);
     }
     const day = data.date.replaceAll('-', '');
     const prefix = data.documentType === 'handover' ? 'BBBG' : 'PXK';
@@ -90,11 +102,11 @@ router.post('/', async (req, res) => {
     const number = `${prefix}${day}-${String(counter.value).padStart(4, '0')}`;
     // Paper records intentionally do not mutate orders, stock, or customer spending.
     const doc = await StockIssue.create({ requestId, number, data, totals: stockIssueAmounts(data) });
-    res.status(201).json(serialize(doc));
+    return respondWithCustomer(res, doc, 201);
   } catch (error: any) {
     if (error.code === 11000) {
       const existing = await StockIssue.findOne({ requestId }).lean().catch(() => null);
-      if (existing && JSON.stringify(existing.data) === JSON.stringify(data)) return res.json(serialize(existing));
+      if (existing && JSON.stringify(existing.data) === JSON.stringify(data)) return respondWithCustomer(res, existing);
       return res.status(409).json({ message: 'Phiếu đang được lưu. Vui lòng bấm lưu lại sau vài giây.' });
     }
     res.status(500).json({ message: 'Chưa lưu được phiếu. Nội dung vẫn được giữ trên máy, bạn có thể thử lại.' });

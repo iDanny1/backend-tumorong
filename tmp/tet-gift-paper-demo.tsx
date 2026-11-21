@@ -1,0 +1,12 @@
+import React from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {readFileSync} from 'node:fs';
+import {createServer} from 'node:http';
+import {QuotationPaper} from '../src/components/quotations/QuotationPaper';
+import {freshQuote, normalizeQuote, quotePricing} from '../src/lib/quotation';
+const gift={pricing:'box-plus-toppings',box:{name:'Hộp quà Tết 2027',price:100000},toppings:[{name:'Hạt sen',price:10000},{name:'Mãng cầu cuộn',price:20000},{name:'Cà phê hòa tan sâm Ngọc Linh',price:30000}]};
+const data=normalizeQuote({...freshQuote('SO Demo'),companyId:'tmr',date:'2026-11-19',customerName:'Minh (khách hàng minh họa)',items:[{productId:'',name:'Hộp quà Tết',gift,unit:'Hộp',quantity:2,unitPrice:160000,vatRate:10,discountType:'percent',discount:10,imageUrl:'',packaging:'1 hộp gồm 3 món'}]});
+if(quotePricing(data).total!==318000) throw Error('Demo total');
+const css=readFileSync('src/components/quotations/quotation-paper.css','utf8');
+const html='<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Báo giá quà Tết demo</title><style>'+css+' body{margin:0;background:#eee;font-family:Arial,sans-serif}.quotation-paper{margin:20px auto;background:white;padding:12mm;box-sizing:border-box}@media print{.quotation-paper{margin:0}}</style>'+renderToStaticMarkup(<QuotationPaper data={data} number="DEMO-01"/>)+'</html>';
+createServer((_req,res)=>{res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});res.end(html)}).listen(0,'127.0.0.1',function(){console.log('PORT',this.address().port)});

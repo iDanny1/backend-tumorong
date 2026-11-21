@@ -1,0 +1,84 @@
+.quotation-paper {
+  box-sizing: border-box;
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 10mm 8mm;
+  background: white;
+  color: #161612;
+  font: 10.5pt/1.32 'Times New Roman', Times, serif;
+  text-align: left;
+  overflow-wrap: anywhere;
+  box-shadow: 0 2px 16px #12332722;
+}
+.quotation-paper :is(h1, p, dl, dd) { margin: 0; }
+.quote-paper-header { text-align: center; }
+.quote-paper-issuer { text-align: left; }
+.quote-paper-issuer strong { font-size: 12pt; }
+.quote-paper-issuer p { margin-top: 1mm; font-size: 9.5pt; }
+.quote-paper-heading { padding: 7mm 0 4mm; }
+.quote-paper-heading h1 { color: #385727; font: bold 21pt/1.15 'Times New Roman', Times, serif; }
+.quote-paper-dates { display: flex; flex-wrap: wrap; justify-content: center; gap: 1mm 3mm; padding-top: 1.4mm; font-size: 9pt; }
+.quote-paper-dates span + span { padding-left: 3mm; border-left: .5pt solid #aaa; }
+.quote-paper-info { font-size: 10pt; }
+.quote-paper-recipient { font-weight: bold; margin-bottom: 1mm !important; }
+.quote-paper-lines {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 9pt;
+  line-height: 1.22;
+}
+.quote-paper-lines caption { text-align: right; padding-bottom: 1mm; font-size: 8pt; font-style: italic; }
+.quote-paper-lines th, .quote-paper-lines td { border: .65pt solid #292922; padding: 1.6mm 1mm; vertical-align: middle; }
+.quote-paper-lines th { text-align: center; font-size: 8pt; line-height: 1.15; text-transform: uppercase; font-weight: bold; padding: 2mm .4mm; }
+.quote-paper-lines th:first-child { white-space: nowrap; padding-inline: 0; }
+.quote-paper-name, .quote-paper-packaging { white-space: pre-line; }
+.quote-paper-center, .quote-paper-image, .quote-paper-packaging { text-align: center; }
+.quote-paper-lines .quote-paper-image { padding: .8mm; }
+.quote-paper-image img { width: 100%; height: 32mm; display: block; object-fit: contain; }
+.quote-paper-image-note { color: #555; font-size: 8pt; }
+.quote-paper-numeric { text-align: right; font-variant-numeric: tabular-nums; }
+.quote-paper-numeric small { display: block; margin-top: .8mm; font-size: 7.8pt; }
+.quote-paper-discount { background: #e5efdd; }
+.quote-paper-ending { display: flex; justify-content: space-between; align-items: flex-start; gap: 6mm; padding-top: 3mm; break-inside: avoid; }
+.quote-paper-lines .quote-paper-summary-cell { border: none; padding: 0; }
+.quote-paper-notes { flex: 1; padding: 1mm 0; font-size: 9pt; }
+.quote-paper-notes p + p { margin-top: 2mm; }
+.quote-paper-totals { width: 40%; font-size: 9pt; }
+.quote-paper-totals > div { display: flex; justify-content: space-between; gap: 2mm; padding: .8mm 1mm; }
+.quote-paper-totals dd { text-align: right; font-variant-numeric: tabular-nums; }
+.quote-paper-grand { border-top: .8pt solid #333; font-size: 10.5pt; font-weight: bold; }
+
+@page quotation {
+  size: A4 portrait;
+  margin: 10mm 8mm;
+  @bottom-right { content: counter(page) " / " counter(pages); font: 8pt Arial, sans-serif; color: #52645b; }
+}
+@media print {
+  body:has(.quotation-preview-root) > :not(.quotation-preview-root),
+  .quotation-preview-root .quotation-print-hide { display: none !important; }
+  html:has(.quotation-preview-root), body:has(.quotation-preview-root),
+  .quotation-preview-root, .quotation-preview-root .quotation-paper-scroll {
+    position: static !important;
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: white !important;
+  }
+  .quotation-preview-root, .quotation-paper { page: quotation; }
+  .quotation-paper {
+    width: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .quote-paper-lines thead { display: table-header-group; }
+  .quote-paper-lines tbody, .quote-paper-lines tr, .quote-paper-header { break-inside: avoid; }
+}

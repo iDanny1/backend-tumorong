@@ -45,6 +45,7 @@ export function routeRoles(method: string, path: string): string[] | 'public' | 
   if (/^\/api\/(categories|news|campaigns)(?:\/[^/]+)?$/.test(path)) return ['admin', 'sales'];
   if (/^\/api\/warehouses(?:\/[^/]+)?$/.test(path)) return safeMethods.has(method) ? everybody : ['admin', 'warehouse'];
   if (/^\/api\/stock-issues(?:\/[^/]+)?$/.test(path)) return everybody;
+  if (path === '/api/quotations' && ['GET', 'HEAD', 'POST'].includes(method)) return everybody;
   if (/^\/api\/vouchers(?:\/[^/]+)?$/.test(path) || /^\/api\/vouchers-v2\/admin\//.test(path)) return ['admin', 'sales'];
   if (/^\/api\/ghn\//.test(path)) return ['admin', 'sales'];
   if (/^\/api\/download\//.test(path) || path === '/api/integrations/appsheet/status') return everybody;

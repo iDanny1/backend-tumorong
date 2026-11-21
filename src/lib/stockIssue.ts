@@ -112,7 +112,11 @@ export function upgradeStockIssue(data: StockIssueData): StockIssueData {
 
 // Discounts are commercial discounts before VAT. Allocate whole VND with the
 // largest remainder method; the allocation always adds up to the bill discount.
-export function stockIssuePricing(data: StockIssueData) {
+type PricingInput = Pick<StockIssueData, 'vatRate' | 'billDiscount' | 'billDiscountType'> & {
+  items: Pick<StockIssueLine, 'quantity' | 'unitPrice' | 'vatRate' | 'discount' | 'discountType'>[];
+};
+
+export function stockIssuePricing(data: PricingInput) {
   const gross = data.items.map(item => Math.round(item.quantity * item.unitPrice));
   const discounts = data.items.map((item, i) => Math.round(item.discountType === 'percent' ? gross[i] * (item.discount ?? 0) / 100 : (item.discount ?? 0)));
   const net = gross.map((value, i) => Math.max(0, value - discounts[i]));

@@ -124,6 +124,16 @@ export const ProductModal: React.FC<ProductModalProps> = ({
             </div>
           </div>
 
+          <label className="block text-sm font-medium text-slate-600">Đơn vị tính
+            <input value={newProduct.unit} placeholder="Hộp, chai, thùng…"
+              className="mt-1 w-full px-4 py-2 rounded-lg border border-slate-200"
+              onChange={e => setNewProduct({ ...newProduct, unit: e.target.value })} />
+          </label>
+          <label className="block text-sm font-medium text-slate-600">Quy cách đóng gói
+            <textarea value={newProduct.packaging} rows={2} maxLength={500} placeholder="Ví dụ: Hộp 10 gói × 3 g"
+              className="mt-1 w-full px-4 py-2 rounded-lg border border-slate-200"
+              onChange={e => setNewProduct({ ...newProduct, packaging: e.target.value })} />
+          </label>
           <div className="flex flex-col gap-3">
             <button
               type="button"

@@ -71,6 +71,18 @@ This will spin up the backend server along with the integrated frontend environm
 - `npm run preview`: Previews the production build locally.
 - `npm run clean`: Clears the compiled `dist` directory.
 - `npm run lint`: Runs TypeScript compiler for type checking (`tsc --noEmit`).
+- `npm run test:backend`: Runs isolated backend routing, spreadsheet, spin-player, and security regression tests without connecting to MongoDB.
+
+## Backend code structure
+
+- `server.ts`: Connects MongoDB, configures middleware, registers routers, and serves the admin app.
+- `src/routes/`: Groups HTTP endpoints by domain: products, orders, customers, staff, vouchers, warehouses, campaigns, articles, and integrations. Spreadsheet endpoints are registered before customer `/:id` routes.
+- `src/models/`: Contains Mongoose schemas. `StoreVoucher.ts` uses the existing `vouchers` collection; `Voucher.ts` holds lucky-wheel vouchers in `spin_vouchers`.
+- `src/services/`: Contains inventory synchronization, document-customer synchronization, AppSheet integration, development seed/migration routines, and shared spin-player logic.
+- `src/security/`: Contains session authorization, validation, login limits, and staff password hashing. Security middleware runs before application routers.
+- `src/lib/spreadsheet.ts`: Shares Excel reading and download generation across import/export endpoints.
+
+`scripts/productAudit.test.ts` runs separate product and inventory audits. It currently exposes seven existing behavior issues: missing product validation/editor fields, zero-stock imports, sales inventory writes, missing-product updates, insufficient-stock restoration, and concurrent confirmations. These assertions remain active; the structural refactor preserves the current behavior.
 
 ---
 <div align="center">

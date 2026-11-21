@@ -2,17 +2,48 @@
 import express from 'express';
 import { createServer } from 'vite';
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { normalizeStockIssue, type SavedStockIssue } from '../src/lib/stockIssue.js';
+import { normalizeQuote, quoteCompanies, quoteHistoryPageSize, quoteNumber, quoteRequestId, type SavedQuote } from '../src/lib/quotation.js';
 import { demoCustomer, demoProducts } from './stockIssueDemoData.js';
 import { STOCK_ISSUE_HISTORY_START, STOCK_ISSUE_HISTORY_PAGE_SIZE, STOCK_ISSUE_DAY_PAGE_SIZE } from '../src/lib/stockIssueHistory.js';
 
 const app = express();
 const records: SavedStockIssue[] = [];
+const quotes: SavedQuote[] = [];
 let customer = { ...demoCustomer };
+app.use('/api/quotations', express.json({ limit: '3mb' }));
 app.use(express.json());
 app.get('/api/auth/csrf', (_req, res) => res.json({ csrfToken: randomUUID() }));
 app.get('/api/customers', (_req, res) => res.json([customer]));
 app.get('/api/products', (_req, res) => res.json(demoProducts));
+app.get('/api/quotations', (req, res) => {
+  const offset = Number(req.query.offset ?? 0);
+  if (!Number.isSafeInteger(offset) || offset < 0) return res.status(400).json({ message: 'Vị trí tải báo giá không hợp lệ.' });
+  const query = String(req.query.q ?? '').trim().toLowerCase();
+  const matching = quotes.filter(doc => doc.number.toLowerCase().includes(query) || doc.customerName.toLowerCase().includes(query))
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+  res.json({ items: matching.slice(offset, offset + quoteHistoryPageSize), hasMore: matching.length > offset + quoteHistoryPageSize });
+});
+app.post('/api/quotations', (req, res) => {
+  try {
+    const requestId = quoteRequestId(req.body?.requestId);
+    const data = normalizeQuote(req.body);
+    const existing = quotes.find(doc => doc.requestId === requestId);
+    if (existing) {
+      if (!isDeepStrictEqual(normalizeQuote(existing), data)) {
+        return res.status(409).json({ message: 'Báo giá đã được lưu với nội dung khác.' });
+      }
+      return res.json(existing);
+    }
+    const company = quoteCompanies.find(option => option.id === data.companyId)!;
+    const number = quoteNumber(data.date, quotes.filter(doc => doc.date === data.date).length + 1);
+    const doc = { ...data, requestId, _id: randomUUID(), number, createdAt: new Date().toISOString(),
+      companyName: company.name, companyAddress: company.address };
+    quotes.unshift(doc);
+    res.status(201).json(doc);
+  } catch (error) { res.status(400).json({ message: (error as Error).message }); }
+});
 app.put('/api/customers/:id', (req, res) => {
   if (req.params.id !== customer._id) return res.status(404).json({ message: 'Không tìm thấy khách mẫu.' });
   if (typeof req.body.address === 'string') customer.address = req.body.address.trim();

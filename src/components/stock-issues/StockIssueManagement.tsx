@@ -6,11 +6,13 @@ import { companyPaymentInfo, money, STOCK_ISSUE_COMPANIES, normalizeStockIssue, 
 import type { Customer, Product, User, Warehouse } from '../../types';
 import { StockIssuePaper } from './StockIssuePaper';
 import { StockIssueHistory } from './StockIssueHistory';
+import { DocumentTypeSelect, type DocumentType } from './DocumentTypeSelect';
+import { QuotationManagement } from '../quotations/QuotationManagement';
 import './stock-issues.css';
 import { archiveIssueDraft, freshIssue, hasIssueContent, readIssueDrafts, recoverIssueDraft, type IssueDraft } from '../../lib/stockIssueDrafts';
 import { warehouseAddress } from '../../lib/warehouse';
 
-type Props = { products: Product[]; customers: Customer[]; user: User };
+type Props = { products: Product[]; customers: Customer[]; user: User; onCustomersChanged?: () => void | Promise<void> };
 const findText = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
 const blankLine = (): StockIssueLine => ({ productId: '', name: '', sku: '', unit: '', requested: 1, quantity: 1, unitPrice: 0, vatRate: -1, discount: 0, discountType: 'amount' });
 const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
@@ -38,7 +40,7 @@ function DisplayOptions({ data, onChange }: { data: StockIssueData; onChange: (s
   )}</>;
 }
 
-export function StockIssueManagement({ products, customers, user }: Props) {
+export function StockIssueManagement({ products, customers, user, onCustomersChanged }: Props) {
   const draftKey = `stock-issue-draft-v1:${user.username}`;
   const archiveKey = `stock-issue-saved-drafts-v1:${user.username}`;
   const [initial] = useState(() => {
@@ -68,6 +70,7 @@ export function StockIssueManagement({ products, customers, user }: Props) {
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const [view, setView] = useState<'form' | 'history'>('form');
+  const [editingQuotation, setEditingQuotation] = useState(false);
   const [customerQuery, setCustomerQuery] = useState('');
   const [productQuery, setProductQuery] = useState('');
   const [preview, setPreview] = useState<{ data: StockIssueData; record: SavedStockIssue | null } | null>(null);
@@ -151,10 +154,11 @@ export function StockIssueManagement({ products, customers, user }: Props) {
   }, [pendingAction]);
 
   const change = <K extends keyof StockIssueData>(key: K, value: StockIssueData[K]) => { setForm(prev => ({ ...prev, [key]: value })); setError(''); };
+  const refreshCustomers = () => { void Promise.resolve().then(() => onCustomersChanged?.()).catch(() => {}); };
   const updateLine = (index: number, value: Partial<StockIssueLine>) => setForm(prev => ({ ...prev, items: prev.items.map((line, i) => i === index ? { ...line, ...value } : line) }));
   const chooseCustomer = (customer: Customer) => {
     setForm(prev => ({
-      ...prev, customerId: customer._id, recipient: prev.isOrganization ? '' : customer.name,
+      ...prev, customerId: customer._id, recipient: prev.isOrganization ? customer.contactName || '' : customer.name,
       organizationName: prev.isOrganization ? customer.name : '', phone: customer.phone || '',
       address: customer.address || '', deliveryAddress: customer.deliveryAddress || customer.address || '',
     }));
@@ -167,7 +171,7 @@ export function StockIssueManagement({ products, customers, user }: Props) {
       return {
         ...prev, isOrganization,
         organizationName: useCatalogName ? customer.name : prev.organizationName,
-        recipient: useCatalogName ? '' : prev.recipient,
+        recipient: useCatalogName ? customer.contactName || '' : prev.recipient,
       };
     });
   };
@@ -217,6 +221,7 @@ export function StockIssueManagement({ products, customers, user }: Props) {
       if (!record) {
         record = await api.post('/api/stock-issues', { ...preview.data, requestId });
         setSaved(record); setPreview({ data: record!, record });
+        refreshCustomers();
         try { localStorage.removeItem(draftKey); } catch { /* The saved server record remains available. */ }
         try {
           const nextDrafts = readIssueDrafts(localStorage, archiveKey, user.name).filter(draft => draft.requestId !== record!.requestId);
@@ -230,29 +235,44 @@ export function StockIssueManagement({ products, customers, user }: Props) {
 
   const matches = <T,>(entries: T[], query: string, label: (entry: T) => string) => entries.filter(entry => findText(label(entry)).includes(findText(query.trim()))).slice(0, 8);
 
+  function chooseDocumentType(type: DocumentType) {
+    setEditingQuotation(type === 'quotation');
+    if (type === 'quotation' || type === (form.documentType ?? 'stock-issue')) return;
+    // A saved document is immutable. Switching its type starts a fresh form.
+    if (saved) replaceCurrent({});
+    setForm(previous => ({
+      ...previous, documentType: type,
+      reason: ['Xuất kho bán hàng', 'Bàn giao hàng hóa'].includes(previous.reason)
+        ? (type === 'handover' ? 'Bàn giao hàng hóa' : 'Xuất kho bán hàng') : previous.reason,
+    }));
+    setError('');
+  }
+
+  if (editingQuotation) {
+    return <QuotationManagement products={catalogProducts} customers={customers} user={user} onCustomersChanged={onCustomersChanged}
+      onDocumentTypeChange={chooseDocumentType} />;
+  }
+
   return <div className="issue-app">
     <header className="issue-heading"><div><div className="issue-eyebrow">XUẤT PHIẾU</div><h1>{handover ? 'Lập biên bản bàn giao' : 'Lập phiếu xuất kho'}</h1><p>Chọn người nhận, thêm hàng rồi xem phiếu và in.</p></div><button type="button" className="issue-button secondary" onClick={() => { setView(view === 'form' ? 'history' : 'form'); setError(''); }}><FileText size={20} />{view === 'form' ? 'Phiếu đã lưu' : 'Về phiếu đang lập'}</button></header>
     {syncStatus && <p role="status" className={syncStatus.state === 'error' ? 'issue-error' : 'issue-draft'}><strong>Kết nối AppSheet: </strong>{syncStatus.message}</p>}
     <div className="issue-current-actions">
       <button type="button" className="issue-button secondary" disabled={saving} onClick={() => beginNew()}><Plus size={18} />Tạo phiếu mới</button>
       <button type="button" className="issue-button danger" disabled={saving} onClick={() => setPendingAction({ kind: 'delete' })}><Trash2 size={18} />Xóa phiếu hiện tại</button>
-      <button type="button" className="issue-button secondary" disabled={catalogLoading} onClick={() => { void refreshCatalog(); }}>{catalogLoading ? 'Đang tải danh mục…' : 'Tải lại danh mục'}</button>
+      <button type="button" className="issue-button secondary" disabled={catalogLoading} onClick={() => { void refreshCatalog(); refreshCustomers(); }}>{catalogLoading ? 'Đang tải danh mục…' : 'Tải lại danh mục'}</button>
     </div>
     {drafts.length > 0 && <details className="issue-card issue-draft-list"><summary>Bản nháp đã lưu trên máy này ({drafts.length})</summary><div className="issue-history">{drafts.map(draft => <button type="button" key={draft.requestId} onClick={() => beginNew(undefined, draft)}><span><strong>{(draft.form.isOrganization && draft.form.organizationName) || draft.form.recipient || 'Chưa nhập người nhận'}</strong><small>{draft.form.documentType === 'handover' ? 'Biên bản bàn giao' : 'Phiếu xuất kho'} · {draft.form.date} · {draft.form.items.length} mặt hàng · {draft.form.warehouseName || 'Chưa chọn kho'}</small></span><span>Mở bản nháp</span></button>)}</div></details>}
     {view === 'history' ? <StockIssueHistory onOpen={record => { setPreview({ data: record, record }); setError(''); }} /> : <>
       <div className="issue-steps"><span><b>1</b> Người nhận & kho</span><span><b>2</b> Hàng xuất</span><span><b>3</b> Xem phiếu & in</span></div>
       {saved ? <div className="issue-success" role="status"><Check size={20} /><span>Đã lưu <strong>{saved.number}</strong>. Bạn có thể in lại hoặc lập phiếu tiếp theo.</span></div> : <p className="issue-draft" role="status">{storageError || `${draftNotice} Bản nháp được tự giữ trên máy này khi bạn nhập. Chọn “Lưu phiếu” để lưu vào hệ thống.`}</p>}
+      <section className="issue-card"><DocumentTypeSelect value={form.documentType ?? 'stock-issue'} onChange={chooseDocumentType} disabled={saving} /></section>
       <fieldset disabled={!!saved || saving} className="issue-form-fields">
-        <section className="issue-card"><Field label="Loại phiếu"><select value={form.documentType || 'stock-issue'} onChange={event => {
-          const documentType = event.target.value as 'stock-issue' | 'handover';
-          setForm(prev => ({ ...prev, documentType, reason: ['Xuất kho bán hàng', 'Bàn giao hàng hóa'].includes(prev.reason) ? (documentType === 'handover' ? 'Bàn giao hàng hóa' : 'Xuất kho bán hàng') : prev.reason }));
-          setError('');
-        }}><option value="stock-issue">Phiếu xuất kho</option><option value="handover">Biên bản bàn giao</option></select></Field></section>
         <section className="issue-card"><h2><span className="issue-step">1</span> Người nhận & kho xuất</h2>
           <div className="issue-grid">
             <div className="issue-wide"><Field label="Tìm khách hàng có sẵn"><div className="issue-search"><Search size={19} /><input placeholder="Gõ tên hoặc số điện thoại…" value={customerQuery} onChange={event => setCustomerQuery(event.target.value)} /></div></Field>
               {customerQuery.trim() && <div className="issue-results">{matches(customers, customerQuery, c => `${c.name} ${c.phone || ''} ${c.deliveryAddress || c.address || ''}`).map(customer => <button type="button" key={customer._id} onClick={() => chooseCustomer(customer)}><strong>{customer.name}</strong><small>{customer.phoneRaw || customer.phone || 'Chưa có SĐT'} {(customer.deliveryAddress || customer.address) ? `· ${customer.deliveryAddress || customer.address}` : ''}</small></button>)}{!matches(customers, customerQuery, c => `${c.name} ${c.phone || ''} ${c.deliveryAddress || c.address || ''}`).length && <p>Chưa tìm thấy khách. Bạn có thể nhập thông tin bên dưới.</p>}</div>}
             </div>
+            <p className="issue-hint issue-wide">Khách mới sẽ được tự động lưu vào danh mục khi lưu phiếu.</p>
             <label className="issue-customer-type issue-wide"><input type="checkbox" checked={!!form.isOrganization} onChange={event => changeCustomerType(event.target.checked)} />Khách đơn vị</label>
             <Field label="Họ và tên người nhận hàng"><input value={form.recipient} onChange={event => { change('recipient', event.target.value); if (!form.isOrganization) change('customerId', ''); }} /></Field>
             <Field label="SĐT người nhận"><input type="tel" maxLength={30} value={form.phone} onChange={event => change('phone', event.target.value)} /></Field>

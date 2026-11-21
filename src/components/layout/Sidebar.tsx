@@ -11,6 +11,7 @@ import {
   BarChart3, 
   Settings, 
   Store,
+  FileText,
   Menu,
   X,
   ChevronDown,
@@ -61,6 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ]
     },
     { icon: Store, label: 'Xuất phiếu', roles: ['admin', 'sales', 'warehouse'] },
+    { icon: FileText, label: 'Hợp đồng', roles: ['admin', 'sales'] },
     { 
       icon: Users, 
       label: 'Khách hàng',

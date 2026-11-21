@@ -3,7 +3,7 @@ import { Request, Response } from 'express';
 import { QuizQuestion } from '../models/QuizQuestion.js';
 import { UserQuizLog } from '../models/UserQuizLog.js';
 import { SpinUser } from '../models/SpinUser.js';
-import { isTestSpinUser, normalizePhone } from './spinUserController.js';
+import { isTestSpinUser, normalizePhone } from '../services/spinPlayer.js';
 
 // Helper tính toán ngày hôm nay theo múi giờ Việt Nam (UTC+7)
 function getTodayInfo() {

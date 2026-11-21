@@ -1,10 +1,9 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
-import mongoose from 'mongoose';
 import { SpinUser } from '../models/SpinUser.js';
 import { Voucher } from '../models/Voucher.js';
 import { AdvancedVoucher } from '../models/AdvancedVoucher.js';
-import { isTestSpinUser, normalizePhone } from './spinUserController.js';
+import { getCustomerTotalSpent, isTestSpinUser, normalizePhone, PRODUCT_PRIZE_MIN_SPENT } from '../services/spinPlayer.js';
 
 // ================================================
 // Danh sách phần thưởng trên vòng quay (6 ô)
@@ -17,9 +16,6 @@ export const PRIZES = [
   { prizeIndex: 4, label: '1 Chai Dầu Gió Nhân Sâm',           type: 'PRODUCT_OIL',  isProduct: true,  discountValue: 0, minOrderValue: 0 },
   { prizeIndex: 5, label: '1 Chai Nước Hồng Đẳng Sâm',         type: 'PRODUCT_HDS',  isProduct: true,  discountValue: 0, minOrderValue: 0 },
 ];
-
-// Ngưỡng tổng chi tiêu tối thiểu để được NHẬN quà vật phẩm (sau khi đã quay trúng)
-const PRODUCT_PRIZE_MIN_SPENT = 200_000;
 
 // Tỉ lệ trúng thưởng (%) — áp dụng như nhau cho mọi người
 //  [Voucher50K | CF | Tea | Golf | Dầu Gió | HĐS]
@@ -36,20 +32,6 @@ function pickPrize(): typeof PRIZES[number] {
     if (rand <= 0) return PRIZES[i];
   }
   return PRIZES[WEIGHTS.findIndex(w => w > 0)] ?? PRIZES[0];
-}
-
-/**
- * Lấy tổng chi tiêu của user từ collection Customer theo số điện thoại
- */
-async function getCustomerTotalSpent(phone: string): Promise<number> {
-  try {
-    const CustomerModel = mongoose.models['Customer']
-      ?? mongoose.model('Customer', new mongoose.Schema({}, { strict: false }));
-    const customer = await (CustomerModel as any).findOne({ phone }).select('totalSpent').lean();
-    return Number((customer as any)?.totalSpent ?? 0);
-  } catch {
-    return 0;
-  }
 }
 
 function generateVoucherCode(prefix: string = 'LUCKY'): string {

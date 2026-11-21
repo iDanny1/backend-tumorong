@@ -4,6 +4,7 @@ import { moneyInWords, newStockIssue, normalizeStockIssue, stockIssueTotals, upg
 import express from 'express';
 import mongoose from 'mongoose';
 import stockIssueRouter from '../src/routes/stockIssueRoutes.js';
+import { mockDocumentCustomers } from './helpers/documentCustomerModel.js';
 
 const sample = () => ({ ...newStockIssue('Nhân viên'), date: '2026-09-24', recipient: 'Khách mẫu', warehouseName: 'Kho quận 1', items: [{ productId: '', name: 'Rượu Sâm Ngọc Linh Atuagin Black', sku: '', unit: 'Chai', requested: 12, quantity: 12, unitPrice: 600000 }] });
 
@@ -57,8 +58,10 @@ test('Vietnamese words handle zero, gaps, special endings and billions', () => {
 });
 
 test('HTTP routes validate, persist snapshots, deduplicate retries and search without a live database', async context => {
+  const customers = mockDocumentCustomers(context);
   const records: any[] = [];
   let sequence = 0;
+  let failDocument = false;
   const Model = mongoose.model('StockIssue');
   const Counter = mongoose.model('StockIssueCounter');
   context.mock.method(Model, 'init', async () => Model);
@@ -66,6 +69,7 @@ test('HTTP routes validate, persist snapshots, deduplicate retries and search wi
   context.mock.method(Model, 'findOne', (query: any) => ({ lean: async () => records.find(row => row.requestId === query.requestId) || null }));
   context.mock.method(Counter, 'findOneAndUpdate', async () => ({ value: ++sequence }));
   context.mock.method(Model, 'create', async (entry: any) => {
+    if (failDocument) throw new Error('Paper database unavailable');
     if (records.some(row => row.requestId === entry.requestId)) throw Object.assign(new Error('Duplicate'), { code: 11000 });
     const doc = { ...entry, _id: String(records.length + 1), createdAt: new Date().toISOString() };
     records.push(doc); return doc;
@@ -89,13 +93,20 @@ test('HTTP routes validate, persist snapshots, deduplicate retries and search wi
   const first: any = await response.json();
   assert.equal(first.number, 'PXK20260924-0001');
   assert.equal(records[0].totals.total, 7920000);
+  assert.equal(customers.records.length, 1);
+  assert.equal(customers.records[0].name, payload.recipient);
+  assert.equal(customers.records[0].ordersCount, 0, 'A paper does not create order statistics');
+  assert.equal(customers.records[0].totalSpent, 0);
   assert.equal((await post(payload)).status, 200);
   assert.equal(records.length, 1);
+  assert.equal(customers.records.length, 1, 'Retrying the same paper does not duplicate its customer');
   assert.equal((await post({ ...payload, recipient: 'Khách khác' })).status, 409);
   assert.equal((await post({ ...payload, requestId: 'test-request-00000002', items: [] })).status, 400);
+  assert.equal(customers.records.length, 1, 'Rejected paper data does not create a customer');
   const concurrent = await Promise.all([post({ ...payload, requestId: 'test-request-00000003' }), post({ ...payload, requestId: 'test-request-00000003' })]);
   assert.ok(concurrent.every(result => [200, 201].includes(result.status)));
   assert.equal(records.length, 2);
+  assert.equal(customers.records.length, 1, 'Concurrent papers for the same identity reuse its customer');
   const all: any = await (await fetch(url)).json(); assert.equal(all.length, 2);
   const literalSearch: any = await (await fetch(`${url}?q=${encodeURIComponent('.*')}`)).json();
   assert.equal(literalSearch.length, 0, 'Search treats regex syntax as literal input');
@@ -115,4 +126,51 @@ test('HTTP routes validate, persist snapshots, deduplicate retries and search wi
   assert.equal((await post(modern)).status, 200);
   assert.equal(records.length, 3);
   assert.equal((await post({ ...modern, requestId: 'test-request-00000005', billDiscount: 999999999 })).status, 400);
+
+  const company = { ...upgradeStockIssue(sample()), documentType: 'handover', requestId: 'test-request-company-01',
+    isOrganization: true, organizationName: 'Công ty Sen Việt', recipient: 'Nguyễn An',
+    phone: '0901 234 567', address: '12 Nguyễn Huệ', deliveryAddress: 'Kho quận 7' };
+  const companyResponse = await post(company);
+  assert.equal(companyResponse.status, 201);
+  assert.match((await companyResponse.json() as any).number, /^BBBG/);
+  const companyCustomer = customers.records.find(row => row.name === company.organizationName);
+  assert.ok(companyCustomer);
+  assert.equal(companyCustomer.contactName, company.recipient);
+  assert.equal(companyCustomer.address, company.address);
+  assert.equal(companyCustomer.deliveryAddress, company.deliveryAddress);
+  assert.equal(companyCustomer.ordersCount, 0);
+  const customerCount = customers.records.length;
+  assert.equal((await post({ ...company, requestId: 'test-request-company-02', organizationName: ' CÔNG TY  SEN VIỆT ', phone: '+84 901 234 567' })).status, 201);
+  assert.equal(customers.records.length, customerCount, 'Name spacing, capitalization and equivalent phone formats reuse the company');
+  assert.equal((await post({ ...company, requestId: 'test-request-company-03', organizationName: 'Công ty Sen Hồng' })).status, 201);
+  assert.equal(customers.records.length, customerCount + 1, 'Companies sharing a contact phone keep separate profiles');
+
+  failDocument = true;
+  const rejected = { ...sample(), recipient: 'Khách phiếu lỗi', requestId: 'test-request-failed-save' };
+  assert.equal((await post(rejected)).status, 500);
+  assert.equal(customers.records.some(row => row.name === rejected.recipient), false, 'A failed document save cannot create a customer');
+  failDocument = false;
+
+  const beforeFailure = records.length;
+  const retryPayload = { ...sample(), recipient: 'Khách chờ đồng bộ', phone: '0912345678', requestId: 'test-request-recovery01' };
+  customers.fail();
+  const unavailable = await post(retryPayload);
+  assert.equal(unavailable.status, 503);
+  const notice: any = await unavailable.json();
+  assert.equal(notice.documentSaved, true);
+  assert.equal(notice.requestId, retryPayload.requestId);
+  assert.equal(records.length, beforeFailure + 1, 'The paper remains durable while CRM is unavailable');
+  assert.equal(customers.records.some(row => row.name === retryPayload.recipient), false);
+  customers.recover();
+  assert.equal((await post(retryPayload)).status, 200);
+  assert.equal(records.length, beforeFailure + 1, 'Recovery retries customer sync without creating another paper');
+  assert.equal(customers.records.filter(row => row.name === retryPayload.recipient).length, 1);
+
+  const concurrentCustomer = { ...sample(), recipient: 'Khách đồng thời', phone: '0987654321' };
+  const separatePapers = await Promise.all([
+    post({ ...concurrentCustomer, requestId: 'test-request-distinct01' }),
+    post({ ...concurrentCustomer, requestId: 'test-request-distinct02' }),
+  ]);
+  assert.ok(separatePapers.every(response => response.status === 201));
+  assert.equal(customers.records.filter(row => row.name === concurrentCustomer.recipient).length, 1, 'Separate concurrent papers create just one customer');
 });

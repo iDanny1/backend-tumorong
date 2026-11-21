@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { SpinUser, ISpinUser } from '../models/SpinUser.js';
 import { Voucher } from '../models/Voucher.js';
-import { HISTORY_QUESTIONS } from '../data/historyQuestions.js';
+import { getCustomerTotalSpent, isTestSpinUser, normalizePhone, PRODUCT_PRIZE_MIN_SPENT } from '../services/spinPlayer.js';
 
 // Helper lấy Customer model an toàn
 function getCustomerModel() {
@@ -24,43 +24,10 @@ function getCustomerModel() {
   return mongoose.model('Customer', customerSchema);
 }
 
-// Helper chuẩn hóa số điện thoại VN (84xxx -> 0xxx)
-export function normalizePhone(rawPhone: string): string {
-  let p = String(rawPhone || '').trim().replace(/[^0-9+]/g, '');
-  if (p.startsWith('+84')) {
-    p = '0' + p.slice(3);
-  } else if (p.startsWith('84') && p.length > 9) {
-    p = '0' + p.slice(2);
-  }
-  return p.replace(/[^0-9]/g, '');
-}
-
-// Helper kiểm tra user test
-export function isTestSpinUser(user?: any, phoneOrZaloId?: string): boolean {
-  if (process.env.NODE_ENV === 'production') return false;
-  const testPhones = (process.env.TEST_PHONES || '').split(',').map(p => p.trim()).filter(Boolean);
-  if (user?.phone && testPhones.includes(user.phone)) return true;
-  if (phoneOrZaloId && testPhones.includes(phoneOrZaloId)) return true;
-  return false;
-}
-
 // ================================================
 // GET /api/spin/user-info
 // Lấy trạng thái hiện tại của người chơi
 // ================================================
-
-const PRODUCT_PRIZE_MIN_SPENT = 200_000;
-
-async function getCustomerTotalSpent(phone: string): Promise<number> {
-  try {
-    const CustomerModel = mongoose.models['Customer']
-      ?? mongoose.model('Customer', new mongoose.Schema({}, { strict: false }));
-    const customer = await (CustomerModel as any).findOne({ phone }).select('totalSpent').lean();
-    return Number((customer as any)?.totalSpent ?? 0);
-  } catch {
-    return 0;
-  }
-}
 
 export async function getSpinInfo(req: Request, res: Response): Promise<void> {
   try {
@@ -281,137 +248,7 @@ export async function registerParticipant(req: Request, res: Response): Promise<
   }
 }
 
-// ================================================
-// GET /api/spin/get-quiz
-// Bước 2: Lấy 1 câu hỏi Lịch sử ngẫu nhiên
-// ================================================
-export async function getQuiz(req: Request, res: Response): Promise<void> {
-  try {
-    const zaloId = (req.headers['x-zalo-id'] as string)?.trim();
-    const queryPhone = normalizePhone(req.query.phone as string);
-
-    // Chọn ngẫu nhiên 1 câu hỏi từ ngân hàng
-    const randomIndex = Math.floor(Math.random() * HISTORY_QUESTIONS.length);
-    const q = HISTORY_QUESTIONS[randomIndex];
-
-    // Lưu quizQuestionId vào SpinUser nếu tìm thấy user
-    if (queryPhone || zaloId) {
-      await SpinUser.findOneAndUpdate(
-        { $or: [{ phone: queryPhone }, { zaloId }] },
-        { $set: { quizQuestionId: q.id } }
-      ).catch(() => {});
-    }
-
-    res.json({
-      success: true,
-      data: {
-        questionId: q.id,
-        question: q.question,
-        options: q.options,
-      },
-    });
-  } catch (err: any) {
-    console.error('[getQuiz]');
-    res.status(500).json({ success: false, message: 'Lỗi khi tải câu hỏi' });
-  }
-}
-
-// ================================================
-// POST /api/spin/submit-quiz
-// Bước 2: Nộp câu trả lời trắc nghiệm Lịch sử
-// ================================================
-export async function submitQuiz(req: Request, res: Response): Promise<void> {
-  try {
-    const { questionId, answerKey, phone: rawPhone, zaloId: rawZaloId } = req.body;
-    const zaloId = (rawZaloId || (req.headers['x-zalo-id'] as string) || '').trim();
-    const phone = rawPhone ? normalizePhone(rawPhone) : '';
-
-    if (!questionId || !answerKey) {
-      res.status(400).json({ success: false, message: 'Thiếu thông tin câu hỏi hoặc đáp án' });
-      return;
-    }
-
-    let user = await SpinUser.findOne({ $or: [{ phone: phone || '___' }, { zaloId: zaloId || '___' }] });
-    const isTest = isTestSpinUser(user, phone || zaloId);
-
-    if (!user && !isTest) {
-      res.status(404).json({ success: false, message: 'Vui lòng xác thực thông tin trước khi trả lời' });
-      return;
-    }
-
-    // Chống cheat: Nếu đã từng trả lời rồi (passed hoặc failed) và không phải test -> Từ chối
-    if (user && !isTest && user.quizStatus !== 'pending' && user.quizStatus !== 'none') {
-      res.status(403).json({
-        success: false,
-        message:
-          user.quizStatus === 'passed'
-            ? 'Bạn đã hoàn thành câu hỏi và nhận lượt quay rồi!'
-            : 'Bạn đã trả lời câu hỏi trước đó rồi.',
-        data: {
-          quizStatus: user.quizStatus,
-          spinsLeft: user.spinsLeft,
-          hasSpun: user.hasSpun,
-        },
-      });
-      return;
-    }
-
-    const question = HISTORY_QUESTIONS.find(item => item.id === questionId);
-    if (!question) {
-      res.status(404).json({ success: false, message: 'Không tìm thấy câu hỏi tương ứng' });
-      return;
-    }
-
-    const isCorrect = String(answerKey).trim().toUpperCase() === question.correctKey.toUpperCase();
-
-    if (isCorrect) {
-      // Trả lời ĐÚNG -> Cấp 1 lượt quay (hoặc 999 cho test)
-      if (user) {
-        user.quizStatus = 'passed';
-        user.spinsLeft = isTest ? 999 : 1;
-        user.quizAnsweredAt = new Date();
-        await user.save();
-      }
-
-      res.json({
-        success: true,
-        data: {
-          isCorrect: true,
-          message: '🎉 Xuất sắc! Câu trả lời hoàn toàn chính xác. Bạn được tặng 1 lượt quay may mắn!',
-          explanation: question.explanation,
-          spinsLeft: isTest ? 999 : 1,
-          quizStatus: 'passed',
-        },
-      });
-    } else {
-      // Trả lời SAI -> Ghi nhận thất bại, không có lượt quay
-      if (user && !isTest) {
-        user.quizStatus = 'failed';
-        user.spinsLeft = 0;
-        user.quizAnsweredAt = new Date();
-        await user.save();
-      }
-
-      res.json({
-        success: true,
-        data: {
-          isCorrect: false,
-          message: '❌ Rất tiếc! Câu trả lời chưa chính xác. Bạn chưa đủ điều kiện nhận lượt quay.',
-          correctAnswerKey: question.correctKey,
-          correctAnswerText: question.options.find(o => o.key === question.correctKey)?.text || '',
-          explanation: question.explanation,
-          spinsLeft: 0,
-          quizStatus: 'failed',
-        },
-      });
-    }
-  } catch (err: any) {
-    console.error('[submitQuiz]');
-    res.status(500).json({ success: false, message: 'Lỗi chấm điểm câu hỏi' });
-  }
-}
-
-// Bỏ hàm claimOASpin cũ để tránh hack lượt, thay bằng registerParticipant + submitQuiz
+// Endpoint cũ hướng người chơi sang đăng ký và trả lời câu hỏi lịch sử.
 export async function claimOASpin(req: Request, res: Response): Promise<void> {
   res.status(410).json({ success: false, message: 'Vui lòng tham gia thử thách câu hỏi Lịch sử để nhận lượt quay' });
 }

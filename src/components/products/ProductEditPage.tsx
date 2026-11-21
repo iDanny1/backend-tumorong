@@ -268,6 +268,14 @@ export const ProductEditPage: React.FC<ProductEditPageProps> = ({
             </div>
           </section>
 
+          <section className="bg-white rounded-lg border border-slate-200 p-6 shadow-sm">
+            <label className="block text-sm font-bold text-slate-800">Quy cách đóng gói
+              <textarea value={formData.packaging ?? ''} rows={2} maxLength={500} placeholder="Ví dụ: Hộp 10 gói × 3 g"
+                className="mt-2 w-full px-3 py-2 border border-slate-200 rounded text-sm font-normal"
+                onChange={e => setFormData({ ...formData, packaging: e.target.value })} />
+            </label>
+          </section>
+
           {/* Kích thước & vận chuyển */}
           <section className="bg-white rounded-lg border border-slate-200 p-6 shadow-sm">
             <h2 className="text-sm font-bold text-slate-800 mb-4">Kích thước & vận chuyển</h2>
