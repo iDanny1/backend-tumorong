@@ -6,7 +6,7 @@ Trong trang quản trị, chọn **Bán tại cửa hàng**. Tài khoản quản
    Có thể tìm thêm theo địa chỉ để phân biệt các khách cùng tên. Chọn khách sẽ điền địa chỉ khách hàng và địa chỉ giao hàng riêng, nếu có.
 2. Chọn kho, kiểm tra ngày và lý do xuất.
    Địa chỉ kho tự điền từ danh mục, hiện ngay trong bước này và trên bản in. Có thể sửa địa chỉ cho phiếu đang lập. Trong **Quản lý kho**, dùng nút sửa kho để lưu tên/địa chỉ vào danh mục. Phiếu đã lưu giữ địa chỉ tại thời điểm lập.
-3. Tìm sản phẩm theo tên / SKU / barcode. Nếu thiếu sản phẩm, chọn **Thêm hàng bằng tay**.
+3. Tìm sản phẩm theo tên / SKU / barcode. Mỗi dòng ghi sổ cần chọn một sản phẩm trong danh mục. Hãy tạo sản phẩm còn thiếu rồi tải lại danh mục.
    Danh mục xuất kho bao gồm cả sản phẩm đang ẩn trên cửa hàng. Trạng thái hiển thị cho khách không quyết định việc xuất kho. Danh mục được tải lại khi vào trang hoặc quay lại cửa sổ; dùng **Tải lại danh mục** nếu vừa thêm sản phẩm/kho ở nơi khác. Đơn vị tính của sản phẩm được lưu và điền vào dòng hàng.
 4. Kiểm tra đơn vị tính, số lượng yêu cầu, thực xuất và **đơn giá chưa VAT**. Giá danh mục được điền sẵn nhưng cần đối chiếu vì hệ thống cũ chưa khai báo rõ giá đã gồm VAT hay chưa.
 5. Chọn **Xem phiếu & in**, kiểm tra mẫu, sau đó **Lưu phiếu & in**.
@@ -35,9 +35,11 @@ Trong mục này, **Chọn công ty lập phiếu** có hai lựa chọn: **CÔN
 
 ## Phạm vi
 
-Đây là chức năng lập chứng từ, **không tự trừ tồn kho, tạo đơn hàng, tăng doanh thu hay thay đổi hồ sơ khách**. Không đồng bộ AppSheet trong bản này. Chức năng dùng danh mục khách / sản phẩm / kho của backend hiện tại. Đơn vị tính và các dòng nhập tay được giữ trên phiếu.
+Quản trị viên và nhân viên kho ghi sổ chứng từ. Phiếu nhập (PNK) cộng số lượng thực nhập vào kho đã chọn. Phiếu xuất (PXK) và biên bản bàn giao độc lập (BBBG) trừ số lượng thực giao. Bản nháp, bản xem trước và lần in lại giữ nguyên số dư. Phiếu lập trước khi triển khai có thể xem và in lại mà không hồi tố số lượng.
 
-API: `GET /api/stock-issues?q=...`, `POST /api/stock-issues`; lịch sử theo ngày dùng `GET /api/stock-issues/days?q=...&before=YYYY-MM-DD` và `GET /api/stock-issues/day?date=YYYY-MM-DD&q=...&offset=0`. Dữ liệu phiếu và bộ đếm nằm trong collection riêng; không sửa collection đơn hàng / sản phẩm. Việc triển khai lên môi trường thật cần giữ các biện pháp bảo vệ API của hệ thống; API này chưa bổ sung một cơ chế đăng nhập mới.
+Khi lập biên bản cho một phiếu xuất đã ghi sổ, liên kết với phiếu gốc và giữ đúng kho, sản phẩm, số lượng. Nếu giao hàng cho một đơn đã trừ tồn, liên kết chứng từ đầu tiên với mã đơn có phân bổ khớp kho và số lượng. Các chứng từ liên kết sử dụng lần trừ kho gốc. Phiếu được ghi cùng biến động tồn trong một giao dịch MongoDB. Cần replica set hoặc cụm MongoDB hỗ trợ giao dịch. Nếu bất kỳ dòng nào thiếu tồn, toàn bộ chứng từ bị từ chối.
+
+`POST /api/stock-issues` ghi sổ. Các API đọc gồm `GET /api/stock-issues?q=...`, `GET /api/stock-issues/days?q=...&before=YYYY-MM-DD` và `GET /api/stock-issues/day?date=YYYY-MM-DD&q=...&offset=0`.
 
 ## Chạy thử riêng
 

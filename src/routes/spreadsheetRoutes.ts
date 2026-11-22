@@ -1,3 +1,5 @@
+import { productRow, importCatalog } from '../services/productSpreadsheet.js';
+import { InventoryError } from '../services/inventory.js';
 import { Router } from 'express';
 import multer from 'multer';
 import { Customer } from '../models/Customer.js';
@@ -5,15 +7,6 @@ import { Product } from '../models/Product.js';
 import { Order } from '../models/Order.js';
 import { importCustomerRows } from '../lib/customerImport.js';
 import { readSpreadsheet, sendSpreadsheet } from '../lib/spreadsheet.js';
-
-interface ProductImportRow {
-  'Tên'?: string;
-  'Giá'?: number | string;
-  'Mô tả'?: string;
-  'Tồn kho'?: number | string;
-  'Trạng thái'?: string;
-  'Nổi bật'?: string;
-}
 
 interface OrderImportRow {
   'Mã đơn hàng'?: string;
@@ -72,17 +65,7 @@ router.post('/api/customers/import', upload.single('file'), async (req, res) => 
 // PRODUCTS EXPORT
 router.get('/api/products/export', async (req, res) => {
   try {
-    const products = await Product.find({}).lean();
-    const rows = products.map(p => ({
-      ID: p._id.toString(),
-      Tên: p.name || '',
-      'Giá': p.price || 0,
-      'Mô tả': p.description || '',
-      'Tồn kho': p.stock || 0,
-      'Trạng thái': p.status || '',
-      'Nổi bật': p.isFeatured ? 'Có' : 'Không',
-      'Ngày tạo': p.createdAt
-    }));
+    const rows = (await Product.find({ archived: { $ne: true } }).lean()).map(productRow);
     sendSpreadsheet(res, rows, 'Sản phẩm', 'products.xlsx');
   } catch (err) {
     res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
@@ -93,26 +76,14 @@ router.get('/api/products/export', async (req, res) => {
 router.post('/api/products/import', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "Không tìm thấy file" });
-    const data = readSpreadsheet<ProductImportRow>(req.file.buffer);
-    let count = 0;
-    for (const row of data) {
-      if (!row['Tên']) continue;
-      await Product.create({
-        name: row['Tên'],
-        price: Number(row['Giá']) || 0,
-        description: row['Mô tả'] || '',
-        stock: Number(row['Tồn kho']) || 1000,
-        status: row['Trạng thái'] || 'Còn hàng',
-        isFeatured: row['Nổi bật'] === 'Có'
-      });
-      count++;
-    }
-    res.json({ message: `Nhập thành công ${count} sản phẩm.` });
-  } catch (err) {
-    res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
+    const { inserted, updated } = await importCatalog(readSpreadsheet<Record<string,unknown>>(req.file.buffer));
+    res.json({inserted, updated, message: `Đã thêm ${inserted}, cập nhật ${updated} sản phẩm. Tồn kho được ghi qua phiếu.`});
+  } catch (err: any) {
+    if (err instanceof InventoryError) return res.status(err.status).json({error:err.message});
+    if (err.code === 11000) return res.status(409).json({error:'SKU trùng. Chưa nhập dòng nào.'});
+    res.status(500).json({ error: 'Chưa nhập được danh mục sản phẩm.' });
   }
 });
-
 // ORDERS IMPORT
 router.post('/api/orders/import', upload.single('file'), async (req, res) => {
   try {

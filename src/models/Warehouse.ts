@@ -7,6 +7,7 @@ export interface IWarehouse extends Document {
   location?: string;
   phone?: string;
   active?: boolean;
+  inventoryRevision?: number;
   createdAt: string;
 }
 const warehouseSchema = new Schema<IWarehouse>({
@@ -15,6 +16,7 @@ const warehouseSchema = new Schema<IWarehouse>({
   location: String,
   phone: String,
   active: Boolean,
+  inventoryRevision: Number,
   createdAt: { type: String, default: () => new Date().toISOString() }
 });
 export const Warehouse: Model<IWarehouse> = mongoose.model('Warehouse', warehouseSchema);

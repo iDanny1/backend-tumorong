@@ -5,7 +5,8 @@ import { LegacyStockIssuePaper } from './LegacyStockIssuePaper';
 
 export function StockIssuePaper({ data, number }: { data: StockIssueData; number?: string }) {
   const handover = data.documentType === 'handover';
-  if (!handover && data.pricingVersion !== 2) return <LegacyStockIssuePaper data={data} number={number} />;
+  const receipt = data.documentType === 'receipt';
+  if (!handover && !receipt && data.pricingVersion !== 2) return <LegacyStockIssuePaper data={data} number={number} />;
   const totals = stockIssuePricing(data);
   const { hideVatTotal, hideDiscountTotal } = stockIssueDisplay(data);
   const showVat = !handover && !data.hideVat;
@@ -22,32 +23,32 @@ export function StockIssuePaper({ data, number }: { data: StockIssueData; number
   ];
   const blank = '........................';
   const [year, month, day] = data.date.split('-');
-  return <article className="stock-paper stock-paper-v2" aria-label={handover ? 'Bản in biên bản bàn giao' : 'Bản in phiếu xuất kho'}>
+  return <article className="stock-paper stock-paper-v2" aria-label={handover ? 'Bản in biên bản bàn giao' : receipt ? 'Bản in phiếu nhập kho' : 'Bản in phiếu xuất kho'}>
     <div className="paper-letterhead">
       <div>{!data.noCompany && <><strong>{data.companyName}</strong><div>{data.companyAddress}</div></>}</div>
-      <div className="paper-template"><strong>Mẫu nội bộ</strong>{!handover && <em>Tham khảo mẫu 02 - VT<br />Bổ sung thông tin bán hàng</em>}</div>
+      <div className="paper-template"><strong>Mẫu nội bộ</strong>{!handover && !receipt && <em>Tham khảo mẫu 02 - VT<br />Bổ sung thông tin bán hàng</em>}</div>
     </div>
     <div className="paper-title">
-      <h1>{handover ? 'BIÊN BẢN BÀN GIAO' : 'PHIẾU XUẤT KHO'}</h1>
+      <h1>{handover ? 'BIÊN BẢN BÀN GIAO' : receipt ? 'PHIẾU NHẬP KHO' : 'PHIẾU XUẤT KHO'}</h1>
       <strong><em>Ngày {day} tháng {month} năm {year}</em></strong>
       <div>Số: {number || 'Chưa cấp — bản xem trước'}</div>
       {!handover && <div className="paper-accounts"><div>Nợ: {data.debitAccount}</div><div>Có: {data.creditAccount}</div></div>}
     </div>
     <div className="paper-information">
-      <section><strong>{handover ? 'Thông tin bên giao' : 'Thông tin bên xuất kho'}</strong>
+      <section><strong>{handover ? 'Thông tin bên giao' : receipt ? 'Thông tin kho nhận' : 'Thông tin bên xuất kho'}</strong>
         <div className="paper-contact"><span>Người lập phiếu: {data.creator || blank}</span><span>SĐT: {data.creatorPhone || blank}</span></div>
-        <div>Kho xuất: {data.warehouseName}</div>
+        <div>{receipt ? 'Kho nhập' : 'Kho xuất'}: {data.warehouseName}</div>
         <div>Địa chỉ kho: {data.warehouseLocation || blank}</div>
-        <div>{handover ? 'Lý do bàn giao' : 'Lý do xuất kho'}: {data.reason}</div>
+        <div>{handover ? 'Lý do bàn giao' : receipt ? 'Lý do nhập kho' : 'Lý do xuất kho'}: {data.reason}</div>
       </section>
-      <section><strong>Thông tin bên nhận hàng</strong>
-        <div className="paper-contact"><span>Họ và tên người nhận hàng: {data.recipient || blank}</span><span>SĐT: {data.phone || blank}</span></div>
+      <section><strong>{receipt ? 'Thông tin bên giao hàng' : 'Thông tin bên nhận hàng'}</strong>
+        <div className="paper-contact"><span>{receipt ? 'Người giao hàng' : 'Họ và tên người nhận hàng'}: {data.recipient || blank}</span><span>SĐT: {data.phone || blank}</span></div>
         {data.isOrganization && <>
           <div>Tên đơn vị: {data.organizationName || blank}</div>
-          <div>Địa chỉ đơn vị nhận hàng: {data.address || blank}</div>
+          <div>{receipt ? 'Địa chỉ đơn vị giao hàng' : 'Địa chỉ đơn vị nhận hàng'}: {data.address || blank}</div>
         </>}
         {data.isOrganization === undefined && data.address && <div>Địa chỉ (bộ phận): {data.address}</div>}
-        <div>Địa chỉ nhận hàng: {data.deliveryAddress || (data.isOrganization === undefined && data.address) || blank}</div>
+        <div>{receipt ? 'Địa chỉ bên giao' : 'Địa chỉ nhận hàng'}: {data.deliveryAddress || (data.isOrganization === undefined && data.address) || blank}</div>
       </section>
     </div>
     <table className="paper-table">
@@ -62,7 +63,7 @@ export function StockIssuePaper({ data, number }: { data: StockIssueData; number
           {!handover && <th rowSpan={2}>Thành tiền đã VAT (đ)</th>}
           {showNotes && <th rowSpan={2}>Ghi chú</th>}
         </tr>
-        <tr><th>Yêu cầu</th><th>{handover ? 'Bàn giao' : 'Thực xuất'}</th></tr>
+        <tr><th>Yêu cầu</th><th>{handover ? 'Bàn giao' : receipt ? 'Thực nhập' : 'Thực xuất'}</th></tr>
       </thead>
       <tbody>
         {data.items.map((item, index) => <tr key={index}>
@@ -89,7 +90,7 @@ export function StockIssuePaper({ data, number }: { data: StockIssueData; number
           ['Bên nhận', '(Ký, họ tên)', data.receiver],
         ] : [
           ['Người lập biểu', '(Ký, họ tên)', data.creator],
-          ['Người nhận hàng', '(Ký, họ tên)', data.receiver],
+          [receipt ? 'Người giao hàng' : 'Người nhận hàng', '(Ký, họ tên)', data.receiver],
           ['Thủ kho', '(Ký, họ tên)', data.keeper],
           ['Kế toán trưởng', '(Ký, họ tên)', data.accountant],
           ['Giám đốc', '(Ký, họ tên, đóng dấu)', data.director],

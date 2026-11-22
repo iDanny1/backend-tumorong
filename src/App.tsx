@@ -25,7 +25,7 @@ import { CampaignManagement } from './components/marketing/CampaignManagement';
 import { ShippingManagement } from './components/shipping/ShippingManagement';
 import { Login } from './components/auth/Login';
 import { CustomerUI } from './components/CustomerUI';
-import { Order, User, Category, Product, Customer } from './types';
+import { Order, User, Category, Product, Customer, Warehouse } from './types';
 import { api, ApiError } from './lib/api';
 import { StockIssueManagement } from './components/stock-issues/StockIssueManagement';
 import { ContractManagement } from './components/contracts/ContractManagement';
@@ -57,6 +57,7 @@ export default function App() {
   const canManageContracts = ['admin', 'sales'].includes(user?.role.toLowerCase() ?? '');
   const showContracts = canManageContracts && activeMenu === 'Hợp đồng';
 
+  const [warehouseDocument, setWarehouseDocument] = useState<{ type: 'receipt' | 'stock-issue'; warehouse: Warehouse } | null>(null);
   const [newProduct, setNewProduct] = useState({
     name: '',
     unit: '',
@@ -67,7 +68,6 @@ export default function App() {
     description: '',
     images: [] as string[],
     status: 'Còn hàng',
-    stock: 10000,
     type: 'Vật lý',
     platform: 'Mini App',
     active: true,
@@ -209,15 +209,14 @@ export default function App() {
         description: '',
         images: [],
         status: 'Còn hàng',
-        stock: 10000,
-        type: 'Vật lý',
+            type: 'Vật lý',
         platform: 'Mini App',
         active: true,
         isFeatured: false
       });
       fetchProducts();
     } catch (err) {
-      alert('Lỗi khi thêm sản phẩm');
+      alert(err instanceof Error ? err.message : 'Lỗi khi thêm sản phẩm');
     }
   };
 
@@ -228,16 +227,17 @@ export default function App() {
       setEditingProduct(null);
       fetchProducts();
     } catch (err) {
-      alert('Lỗi khi cập nhật sản phẩm');
+      alert(err instanceof Error ? err.message : 'Lỗi khi cập nhật sản phẩm');
     }
   };
 
   const handleDeleteProduct = async (id: string) => {
     try {
+      if (!window.confirm('Ngừng kinh doanh sản phẩm này?')) return;
       await api.delete(`/api/products/${id}`);
       fetchProducts();
     } catch (err) {
-      alert('Lỗi khi xóa sản phẩm');
+      alert(err instanceof Error ? err.message : 'Chưa ngừng kinh doanh được sản phẩm.');
     }
   };
 
@@ -286,19 +286,19 @@ export default function App() {
   const updateOrderStatus = async (orderId: string, updates: string | Partial<Order>) => {
     try {
       const updateData = typeof updates === 'string' ? { status: updates } : updates;
-      await api.put(`/api/orders/${orderId}`, updateData);
+      const result = await api.put(`/api/orders/${orderId}`, updateData);
       
       setShowOrderModal(false);
       fetchOrders();
       fetchProducts(); // Cập nhật lại tồn kho sản phẩm nếu đơn hàng được xác nhận hoặc hủy
       // Cập nhật lại selectedOrder để UI phản hồi ngay lập tức
       if (selectedOrder && selectedOrder._id === orderId) {
-        setSelectedOrder(prev => prev ? { ...prev, ...updateData } : null);
+        setSelectedOrder(result.data);
         // Thông báo thành công
         alert('Cập nhật đơn hàng thành công!');
       }
     } catch (err) {
-      alert('Lỗi khi cập nhật trạng thái đơn hàng');
+      alert(err instanceof Error ? err.message : 'Lỗi khi cập nhật trạng thái đơn hàng');
     }
   };
 
@@ -345,18 +345,10 @@ export default function App() {
     }
   };
 
-  const handleUpdateProductStock = async (productId: string, warehouseStock: { [key: string]: number }, totalStock: number) => {
-    try {
-      await api.patch(`/api/products/${productId}/stock`, { warehouseStock, stock: totalStock });
-      fetchProducts();
-    } catch (err) {
-      console.error("Error updating product stock:", err);
-    }
-  };
 
   const renderContent = () => {
     if (activeMenu === 'Xuất phiếu' && user) {
-      return <StockIssueManagement key={user.username} products={products} customers={customers} user={user} onCustomersChanged={fetchCustomers} />;
+      return <StockIssueManagement key={user.username} products={products} customers={customers} user={user} onCustomersChanged={fetchCustomers} onInventoryChanged={fetchProducts} warehouseDocument={warehouseDocument} orders={orders} />;
     }
     if (activeMenu === 'Đơn hàng') {
       if (selectedOrder) {
@@ -387,6 +379,7 @@ export default function App() {
     if (activeMenu === 'Quản lý sản phẩm' || activeMenu === 'Quản lý sản phẩm - Sản phẩm') {
       return (
         <ProductManagement 
+          role={user?.role || ''}
           products={products}
           searchQuery={searchQuery}
           onAddProduct={() => setShowProductModal(true)}
@@ -422,7 +415,8 @@ export default function App() {
       return (
         <WarehouseManagement 
           products={products} 
-          onUpdateProductStock={handleUpdateProductStock} 
+          onRefresh={fetchProducts}
+          onDocument={(type, warehouse) => { setWarehouseDocument({ type, warehouse }); setActiveMenu('Xuất phiếu'); }}
         />
       );
     }
@@ -534,6 +528,7 @@ export default function App() {
         setSidebarOpen={setSidebarOpen}
         activeMenu={activeMenu}
         setActiveMenu={menu => {
+          setWarehouseDocument(null);
           if (menu === 'Hợp đồng') setContractsOpened(true);
           setActiveMenu(menu);
         }}

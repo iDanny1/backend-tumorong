@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Check, ChevronLeft, Copy, FileText, Plus, Printer, Search, Trash2, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import { companyPaymentInfo, money, STOCK_ISSUE_COMPANIES, normalizeStockIssue, stockIssueDisplay, stockIssuePricing, upgradeStockIssue, type SavedStockIssue, type StockIssueData, type StockIssueLine } from '../../lib/stockIssue';
-import type { Customer, Product, User, Warehouse } from '../../types';
+import type { Customer, Order, Product, User, Warehouse } from '../../types';
 import { StockIssuePaper } from './StockIssuePaper';
 import { StockIssueHistory } from './StockIssueHistory';
 import { DocumentTypeSelect, type DocumentType } from './DocumentTypeSelect';
@@ -12,7 +12,14 @@ import './stock-issues.css';
 import { archiveIssueDraft, freshIssue, hasIssueContent, readIssueDrafts, recoverIssueDraft, type IssueDraft } from '../../lib/stockIssueDrafts';
 import { warehouseAddress } from '../../lib/warehouse';
 
-type Props = { products: Product[]; customers: Customer[]; user: User; onCustomersChanged?: () => void | Promise<void> };
+type Props = {
+  products: Product[]; customers: Customer[]; user: User; orders?: Order[];
+  onCustomersChanged?: () => void | Promise<void>; onInventoryChanged?: () => void | Promise<void>;
+  warehouseDocument?: { type: 'receipt' | 'stock-issue'; warehouse: Warehouse } | null;
+};
+const documentName = (type: StockIssueData['documentType']) =>
+  type === 'handover' ? 'Biên bản bàn giao' : type === 'receipt' ? 'Phiếu nhập kho' : 'Phiếu xuất kho';
+const reasons = { receipt: 'Nhập hàng', 'stock-issue': 'Xuất kho bán hàng', handover: 'Bàn giao hàng hóa' };
 const findText = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
 const blankLine = (): StockIssueLine => ({ productId: '', name: '', sku: '', unit: '', requested: 1, quantity: 1, unitPrice: 0, vatRate: -1, discount: 0, discountType: 'amount' });
 const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
@@ -40,7 +47,14 @@ function DisplayOptions({ data, onChange }: { data: StockIssueData; onChange: (s
   )}</>;
 }
 
-export function StockIssueManagement({ products, customers, user, onCustomersChanged }: Props) {
+export function StockIssueManagement({ products, customers, user, orders = [], onCustomersChanged, onInventoryChanged, warehouseDocument }: Props) {
+  const canPost = user.role === 'admin' || user.role === 'warehouse';
+  const [fromWarehouse] = useState<StockIssueData | undefined>(() => {
+    if (!warehouseDocument) return;
+    const { type, warehouse } = warehouseDocument;
+    return { ...freshIssue(user.name), documentType: type, reason: reasons[type], warehouseId: warehouse._id,
+      warehouseName: warehouse.name, warehouseLocation: warehouseAddress(warehouse), ...(type === 'receipt' && { creditAccount: '', debitAccount: '' }) };
+  });
   const draftKey = `stock-issue-draft-v1:${user.username}`;
   const archiveKey = `stock-issue-saved-drafts-v1:${user.username}`;
   const [initial] = useState(() => {
@@ -48,7 +62,7 @@ export function StockIssueManagement({ products, customers, user, onCustomersCha
       const stored = recoverIssueDraft(JSON.parse(localStorage.getItem(draftKey) || 'null'), user.name);
       if (stored) return { ...stored, recovered: true };
     } catch { /* A damaged or disabled browser store must not stop the form. */ }
-    return { form: freshIssue(user.name), requestId: crypto.randomUUID(), recovered: false };
+    return { form: fromWarehouse || freshIssue(user.name), requestId: crypto.randomUUID(), recovered: false };
   });
   const [form, setForm] = useState<StockIssueData>(initial.form);
   const [requestId, setRequestId] = useState(initial.requestId);
@@ -56,7 +70,7 @@ export function StockIssueManagement({ products, customers, user, onCustomersCha
     try { return readIssueDrafts(localStorage, archiveKey, user.name); } catch { return []; }
   });
   const [draftNotice, setDraftNotice] = useState(initial.recovered ? 'Đã mở lại nội dung đang soạn.' : '');
-  const [pendingAction, setPendingAction] = useState<{ kind: 'new'; copy?: StockIssueData; draft?: IssueDraft } | { kind: 'delete' } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ kind: 'new'; copy?: StockIssueData; draft?: IssueDraft } | { kind: 'delete' } | null>(initial.recovered && fromWarehouse ? { kind: 'new', copy: fromWarehouse } : null);
   const [catalogProducts, setCatalogProducts] = useState(products);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState('');
@@ -75,6 +89,7 @@ export function StockIssueManagement({ products, customers, user, onCustomersCha
   const [productQuery, setProductQuery] = useState('');
   const [preview, setPreview] = useState<{ data: StockIssueData; record: SavedStockIssue | null } | null>(null);
   const [paperScale, setPaperScale] = useState(() => Math.min(1, (window.innerWidth - 48) / (210 * 96 / 25.4)));
+  const receipt = form.documentType === 'receipt';
   const handover = form.documentType === 'handover';
   const totals = stockIssuePricing(form);
   const selectedCompany = STOCK_ISSUE_COMPANIES.find(company => company.name === form.companyName && (company.name !== '' || form.noCompany));
@@ -102,7 +117,7 @@ export function StockIssueManagement({ products, customers, user, onCustomersCha
     if (productResult.status === 'fulfilled') { setCatalogProducts(productResult.value); setCatalogError(''); }
     else setCatalogError('Chưa tải được sản phẩm mới. Chọn “Tải lại danh mục” để thử lại.');
     if (warehouseResult.status === 'fulfilled') { setWarehouses(warehouseResult.value); setWarehouseError(''); }
-    else setWarehouseError('Chưa tải được danh sách kho. Bạn vẫn có thể nhập tên và địa chỉ kho bên dưới.');
+    else setWarehouseError('Chưa tải được danh sách kho. Chọn “Tải lại danh mục” để thử lại.');
     setCatalogLoading(false);
   }, []);
   useEffect(() => {
@@ -209,7 +224,11 @@ export function StockIssueManagement({ products, customers, user, onCustomersCha
     }
   };
   const openPreview = () => {
-    try { setPreview({ data: normalizeStockIssue(form), record: saved }); setError(''); }
+    try {
+      if (!saved && !form.warehouseId) throw new Error('Chọn kho trong danh sách để ghi nhận số lượng.');
+      if (!saved && form.items.some(item => !item.productId)) throw new Error('Có dòng hàng chưa liên kết sản phẩm. Bỏ dòng đó và chọn lại sản phẩm từ danh mục.');
+      setPreview({ data: saved || normalizeStockIssue(form), record: saved }); setError('');
+    }
     catch (err) { setError((err as Error).message); }
   };
 
@@ -219,9 +238,12 @@ export function StockIssueManagement({ products, customers, user, onCustomersCha
     try {
       let record = preview.record;
       if (!record) {
+        if (!canPost) throw new Error('Cần quyền thủ kho hoặc quản trị để ghi sổ chứng từ.');
         record = await api.post('/api/stock-issues', { ...preview.data, requestId });
         setSaved(record); setPreview({ data: record!, record });
-        refreshCustomers();
+        if (record?.documentType !== 'receipt') refreshCustomers();
+        void refreshCatalog();
+        void Promise.resolve().then(() => onInventoryChanged?.()).catch(() => {});
         try { localStorage.removeItem(draftKey); } catch { /* The saved server record remains available. */ }
         try {
           const nextDrafts = readIssueDrafts(localStorage, archiveKey, user.name).filter(draft => draft.requestId !== record!.requestId);
@@ -241,9 +263,9 @@ export function StockIssueManagement({ products, customers, user, onCustomersCha
     // A saved document is immutable. Switching its type starts a fresh form.
     if (saved) replaceCurrent({});
     setForm(previous => ({
-      ...previous, documentType: type,
-      reason: ['Xuất kho bán hàng', 'Bàn giao hàng hóa'].includes(previous.reason)
-        ? (type === 'handover' ? 'Bàn giao hàng hóa' : 'Xuất kho bán hàng') : previous.reason,
+      ...previous, documentType: type, sourceIssueId: undefined, sourceOrderId: undefined,
+      reason: Object.values(reasons).includes(previous.reason) ? reasons[type] : previous.reason,
+      ...(type === 'receipt' && { debitAccount: '', creditAccount: '', customerId: '' }),
     }));
     setError('');
   }
@@ -254,50 +276,55 @@ export function StockIssueManagement({ products, customers, user, onCustomersCha
   }
 
   return <div className="issue-app">
-    <header className="issue-heading"><div><div className="issue-eyebrow">XUẤT PHIẾU</div><h1>{handover ? 'Lập biên bản bàn giao' : 'Lập phiếu xuất kho'}</h1><p>Chọn người nhận, thêm hàng rồi xem phiếu và in.</p></div><button type="button" className="issue-button secondary" onClick={() => { setView(view === 'form' ? 'history' : 'form'); setError(''); }}><FileText size={20} />{view === 'form' ? 'Phiếu đã lưu' : 'Về phiếu đang lập'}</button></header>
+    <header className="issue-heading"><div><div className="issue-eyebrow">XUẤT PHIẾU</div><h1>{documentName(form.documentType)}</h1><p>{receipt ? 'Ghi sổ để cộng hàng vào kho nhận.' : form.sourceIssueId || form.sourceOrderId ? 'Chứng từ liên kết với lần xuất hàng đã ghi nhận.' : 'Ghi sổ để trừ hàng tại kho xuất.'}</p></div><button type="button" className="issue-button secondary" onClick={() => { setView(view === 'form' ? 'history' : 'form'); setError(''); }}><FileText size={20} />{view === 'form' ? 'Phiếu đã lưu' : 'Về phiếu đang lập'}</button></header>
     {syncStatus && <p role="status" className={syncStatus.state === 'error' ? 'issue-error' : 'issue-draft'}><strong>Kết nối AppSheet: </strong>{syncStatus.message}</p>}
     <div className="issue-current-actions">
       <button type="button" className="issue-button secondary" disabled={saving} onClick={() => beginNew()}><Plus size={18} />Tạo phiếu mới</button>
       <button type="button" className="issue-button danger" disabled={saving} onClick={() => setPendingAction({ kind: 'delete' })}><Trash2 size={18} />Xóa phiếu hiện tại</button>
       <button type="button" className="issue-button secondary" disabled={catalogLoading} onClick={() => { void refreshCatalog(); refreshCustomers(); }}>{catalogLoading ? 'Đang tải danh mục…' : 'Tải lại danh mục'}</button>
     </div>
-    {drafts.length > 0 && <details className="issue-card issue-draft-list"><summary>Bản nháp đã lưu trên máy này ({drafts.length})</summary><div className="issue-history">{drafts.map(draft => <button type="button" key={draft.requestId} onClick={() => beginNew(undefined, draft)}><span><strong>{(draft.form.isOrganization && draft.form.organizationName) || draft.form.recipient || 'Chưa nhập người nhận'}</strong><small>{draft.form.documentType === 'handover' ? 'Biên bản bàn giao' : 'Phiếu xuất kho'} · {draft.form.date} · {draft.form.items.length} mặt hàng · {draft.form.warehouseName || 'Chưa chọn kho'}</small></span><span>Mở bản nháp</span></button>)}</div></details>}
+    {drafts.length > 0 && <details className="issue-card issue-draft-list"><summary>Bản nháp đã lưu trên máy này ({drafts.length})</summary><div className="issue-history">{drafts.map(draft => <button type="button" key={draft.requestId} onClick={() => beginNew(undefined, draft)}><span><strong>{(draft.form.isOrganization && draft.form.organizationName) || draft.form.recipient || 'Chưa nhập người nhận'}</strong><small>{documentName(draft.form.documentType)} · {draft.form.date} · {draft.form.items.length} mặt hàng · {draft.form.warehouseName || 'Chưa chọn kho'}</small></span><span>Mở bản nháp</span></button>)}</div></details>}
     {view === 'history' ? <StockIssueHistory onOpen={record => { setPreview({ data: record, record }); setError(''); }} /> : <>
-      <div className="issue-steps"><span><b>1</b> Người nhận & kho</span><span><b>2</b> Hàng xuất</span><span><b>3</b> Xem phiếu & in</span></div>
-      {saved ? <div className="issue-success" role="status"><Check size={20} /><span>Đã lưu <strong>{saved.number}</strong>. Bạn có thể in lại hoặc lập phiếu tiếp theo.</span></div> : <p className="issue-draft" role="status">{storageError || `${draftNotice} Bản nháp được tự giữ trên máy này khi bạn nhập. Chọn “Lưu phiếu” để lưu vào hệ thống.`}</p>}
+      <div className="issue-steps"><span><b>1</b> {receipt ? 'Người giao & kho' : 'Người nhận & kho'}</span><span><b>2</b> {receipt ? 'Hàng nhập' : 'Hàng xuất'}</span><span><b>3</b> Xem phiếu & in</span></div>
+      {saved ? <div className="issue-success" role="status"><Check size={20} /><span>Đã lưu <strong>{saved.number}</strong>. Bạn có thể in lại hoặc lập phiếu tiếp theo.</span></div> : <p className="issue-draft" role="status">{storageError || `${draftNotice} Bản nháp được tự giữ trên máy này khi bạn nhập. Chọn “Ghi sổ” sau khi kiểm tra phiếu.`}</p>}
       <section className="issue-card"><DocumentTypeSelect value={form.documentType ?? 'stock-issue'} onChange={chooseDocumentType} disabled={saving} /></section>
       <fieldset disabled={!!saved || saving} className="issue-form-fields">
-        <section className="issue-card"><h2><span className="issue-step">1</span> Người nhận & kho xuất</h2>
+        <section className="issue-card"><h2><span className="issue-step">1</span> {receipt ? 'Người giao & kho nhập' : 'Người nhận & kho xuất'}</h2>
           <div className="issue-grid">
-            <div className="issue-wide"><Field label="Tìm khách hàng có sẵn"><div className="issue-search"><Search size={19} /><input placeholder="Gõ tên hoặc số điện thoại…" value={customerQuery} onChange={event => setCustomerQuery(event.target.value)} /></div></Field>
+            {!receipt && <><div className="issue-wide"><Field label="Tìm khách hàng có sẵn"><div className="issue-search"><Search size={19} /><input placeholder="Gõ tên hoặc số điện thoại…" value={customerQuery} onChange={event => setCustomerQuery(event.target.value)} /></div></Field>
               {customerQuery.trim() && <div className="issue-results">{matches(customers, customerQuery, c => `${c.name} ${c.phone || ''} ${c.deliveryAddress || c.address || ''}`).map(customer => <button type="button" key={customer._id} onClick={() => chooseCustomer(customer)}><strong>{customer.name}</strong><small>{customer.phoneRaw || customer.phone || 'Chưa có SĐT'} {(customer.deliveryAddress || customer.address) ? `· ${customer.deliveryAddress || customer.address}` : ''}</small></button>)}{!matches(customers, customerQuery, c => `${c.name} ${c.phone || ''} ${c.deliveryAddress || c.address || ''}`).length && <p>Chưa tìm thấy khách. Bạn có thể nhập thông tin bên dưới.</p>}</div>}
             </div>
-            <p className="issue-hint issue-wide">Khách mới sẽ được tự động lưu vào danh mục khi lưu phiếu.</p>
-            <label className="issue-customer-type issue-wide"><input type="checkbox" checked={!!form.isOrganization} onChange={event => changeCustomerType(event.target.checked)} />Khách đơn vị</label>
-            <Field label="Họ và tên người nhận hàng"><input value={form.recipient} onChange={event => { change('recipient', event.target.value); if (!form.isOrganization) change('customerId', ''); }} /></Field>
-            <Field label="SĐT người nhận"><input type="tel" maxLength={30} value={form.phone} onChange={event => change('phone', event.target.value)} /></Field>
+            <p className="issue-hint issue-wide">Khách mới sẽ được tự động lưu vào danh mục khi lưu phiếu.</p></>}
+            <label className="issue-customer-type issue-wide"><input type="checkbox" checked={!!form.isOrganization} onChange={event => changeCustomerType(event.target.checked)} />{receipt ? 'Bên giao là tổ chức' : 'Khách đơn vị'}</label>
+            <Field label={receipt ? 'Họ và tên người giao hàng' : 'Họ và tên người nhận hàng'}><input value={form.recipient} onChange={event => { change('recipient', event.target.value); if (!form.isOrganization) change('customerId', ''); }} /></Field>
+            <Field label={receipt ? 'SĐT người giao' : 'SĐT người nhận'}><input type="tel" maxLength={30} value={form.phone} onChange={event => change('phone', event.target.value)} /></Field>
             {form.isOrganization && <>
               <Field label="Tên đơn vị" wide><input value={form.organizationName ?? ''} onChange={event => { change('organizationName', event.target.value); change('customerId', ''); }} /></Field>
-              <Field label="Địa chỉ đơn vị nhận hàng" wide><input value={form.address} onChange={event => change('address', event.target.value)} /></Field>
+              <Field label={receipt ? 'Địa chỉ đơn vị giao hàng' : 'Địa chỉ đơn vị nhận hàng'} wide><input value={form.address} onChange={event => change('address', event.target.value)} /></Field>
             </>}
-            <Field label="Địa chỉ nhận hàng" wide><input value={form.deliveryAddress} onChange={event => change('deliveryAddress', event.target.value)} /></Field>
+            <Field label={receipt ? 'Địa chỉ bên giao' : 'Địa chỉ nhận hàng'} wide><input value={form.deliveryAddress} onChange={event => change('deliveryAddress', event.target.value)} /></Field>
             <Field label="Người lập phiếu"><input value={form.creator} onChange={event => change('creator', event.target.value)} /></Field>
             <Field label="SĐT người lập phiếu"><input type="tel" maxLength={30} value={form.creatorPhone ?? ''} onChange={event => change('creatorPhone', event.target.value)} /></Field>
-            <Field label="Chọn kho có sẵn"><select value={form.warehouseId} onChange={event => { const warehouse = warehouses.find(w => w._id === event.target.value); setForm(prev => ({ ...prev, warehouseId: warehouse?._id || '', warehouseName: warehouse?.name || '', warehouseLocation: warehouseAddress(warehouse) })); }}><option value="">Nhập kho bên cạnh hoặc chọn tại đây</option>{warehouses.map(warehouse => <option value={warehouse._id} key={warehouse._id}>{warehouse.name}{warehouseAddress(warehouse) ? ` · ${warehouseAddress(warehouse)}` : ' · Chưa có địa chỉ'}</option>)}</select></Field>
-            <Field label="Tên kho xuất *"><input value={form.warehouseName} onChange={event => { change('warehouseName', event.target.value); change('warehouseId', ''); }} placeholder="Ví dụ: Kho quận 1" /></Field>
-            <Field label="Địa chỉ kho xuất" wide><input value={form.warehouseLocation} onChange={event => change('warehouseLocation', event.target.value)} placeholder="Địa chỉ này sẽ hiện trên phiếu in" /></Field>
+            <Field label={receipt ? 'Kho nhập *' : 'Kho xuất *'}><select disabled={!!form.sourceIssueId} value={form.warehouseId} onChange={event => { const warehouse = warehouses.find(w => w._id === event.target.value); setForm(prev => ({ ...prev, warehouseId: warehouse?._id || '', warehouseName: warehouse?.name || '', warehouseLocation: warehouseAddress(warehouse) })); }}><option value="">Chọn kho</option>{warehouses.map(warehouse => <option value={warehouse._id} key={warehouse._id}>{warehouse.name}{warehouseAddress(warehouse) ? ` · ${warehouseAddress(warehouse)}` : ' · Chưa có địa chỉ'}</option>)}</select></Field>
+            {!receipt && !form.sourceIssueId && <Field label="Đơn đã trừ kho (nếu có)">
+              <input list="issued-order-codes" placeholder="Mã đơn hàng" value={form.sourceOrderId || ''} onChange={event => change('sourceOrderId', event.target.value.trim())} />
+              <datalist id="issued-order-codes">{orders.filter(order => order.stockDeducted).map(order => <option key={order._id} value={order.orderId || order._id}>{order.customerName}</option>)}</datalist>
+            </Field>}
+            {form.sourceIssueId && <p className="issue-hint">Bàn giao theo phiếu xuất đã ghi sổ. Số lượng và kho lấy từ phiếu gốc.</p>}
+            <Field label="Địa chỉ kho" wide><input value={form.warehouseLocation} onChange={event => change('warehouseLocation', event.target.value)} placeholder="Địa chỉ này sẽ hiện trên phiếu in" /></Field>
             {form.warehouseId && !form.warehouseLocation && <p className="issue-hint issue-wide">Kho này chưa có địa chỉ. Nhập địa chỉ cho phiếu hoặc cập nhật trong Quản lý kho.</p>}
             {warehouseError && <p className="issue-hint issue-wide">{warehouseError}</p>}
-            <Field label={handover ? 'Ngày bàn giao *' : 'Ngày xuất *'}><input type="date" value={form.date} onChange={event => change('date', event.target.value)} /></Field>
-            <Field label={handover ? 'Lý do bàn giao *' : 'Lý do xuất *'}><input value={form.reason} onChange={event => change('reason', event.target.value)} /></Field>
+            <Field label={handover ? 'Ngày bàn giao *' : receipt ? 'Ngày nhập *' : 'Ngày xuất *'}><input type="date" value={form.date} onChange={event => change('date', event.target.value)} /></Field>
+            <Field label={handover ? 'Lý do bàn giao *' : receipt ? 'Lý do nhập *' : 'Lý do xuất *'}><input value={form.reason} onChange={event => change('reason', event.target.value)} /></Field>
           </div>
         </section>
-        <section className="issue-card"><h2><span className="issue-step">2</span> Hàng cần xuất</h2>
+        <section className="issue-card"><h2><span className="issue-step">2</span> {receipt ? 'Hàng nhập' : 'Hàng xuất'}</h2>
+          <fieldset className="issue-form-fields" disabled={!!form.sourceIssueId}>
           <Field label="Tìm sản phẩm"><div className="issue-search"><Search size={19} /><input value={productQuery} onChange={event => setProductQuery(event.target.value)} placeholder="Gõ tên hàng, mã hàng hoặc mã vạch…" /></div></Field>
           {catalogError && <p role="alert" className="issue-error">{catalogError}</p>}
-          {productQuery.trim() && <div className="issue-results">{matches(catalogProducts, productQuery, p => `${p.name} ${p.sku || ''} ${p.barcode || ''}`).map(product => <button type="button" key={product._id} onClick={() => addProduct(product)}><strong>{product.name}</strong><small>{product.sku || product.barcode || 'Chưa có mã'}{!handover && <> · Giá danh mục: {money(product.price || 0)} đ</>}{product.active === false ? ' · Đang ẩn trên cửa hàng' : ''}</small></button>)}{!matches(catalogProducts, productQuery, p => `${p.name} ${p.sku || ''} ${p.barcode || ''}`).length && <p>{catalogLoading ? 'Đang tải sản phẩm…' : 'Chưa có trong danh mục. Thử tải lại danh mục hoặc chọn “Thêm hàng bằng tay”.'}</p>}</div>}
+          {productQuery.trim() && <div className="issue-results">{matches(catalogProducts, productQuery, p => `${p.name} ${p.sku || ''} ${p.barcode || ''}`).map(product => <button type="button" key={product._id} disabled={form.items.length >= 100} onClick={() => addProduct(product)}><strong>{product.name}</strong><small>{product.sku || product.barcode || 'Chưa có mã'}{form.warehouseId && <> · Tồn tại kho: {product.warehouseStock?.[form.warehouseId] || 0} {product.unit}</>}{!handover && <> · Giá danh mục: {money(product.price || 0)} đ</>}{product.active === false ? ' · Đang ẩn trên cửa hàng' : ''}</small></button>)}{!matches(catalogProducts, productQuery, p => `${p.name} ${p.sku || ''} ${p.barcode || ''}`).length && <p>{catalogLoading ? 'Đang tải sản phẩm…' : 'Chưa có trong danh mục. Thử tải lại danh mục hoặc tạo sản phẩm trước khi lập phiếu.'}</p>}</div>}
           {handover ? <p className="issue-hint">Kiểm tra tên hàng, đơn vị tính và số lượng bàn giao trước khi in.</p> : <p className="issue-hint">Kiểm tra đơn vị tính, giá bán chưa VAT và thuế suất từng sản phẩm trước khi in. Mỗi lần chọn sản phẩm sẽ thêm một dòng riêng. Với hàng tặng, đặt đơn giá của dòng đó là 0 đồng; bạn có thể chỉnh số lượng trên từng dòng.</p>}
-          {!form.items.length && <div className="issue-empty"><FileText size={30} /><p>Chưa có hàng trên phiếu</p><small>Tìm sản phẩm ở trên hoặc thêm hàng bằng tay.</small></div>}
+          {!form.items.length && <div className="issue-empty"><FileText size={30} /><p>Chưa có hàng trên phiếu</p><small>Tìm và chọn sản phẩm từ danh mục ở trên.</small></div>}
           <div className="issue-lines">{form.items.map((item, index) => <section className="issue-line" key={index} aria-label={`Mặt hàng ${index + 1}`}>
             <div className="issue-section-title"><h3>Mặt hàng {index + 1}</h3><button type="button" className="issue-remove" aria-label={`Xóa mặt hàng ${index + 1}`} onClick={() => setForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }))}><Trash2 size={16} />Bỏ dòng</button></div>
             <div className="issue-line-grid">
@@ -305,7 +332,7 @@ export function StockIssueManagement({ products, customers, user, onCustomersCha
               <Field label="Mã hàng"><input value={item.sku} onChange={event => updateLine(index, { sku: event.target.value })} /></Field>
               <Field label="Đơn vị tính *"><input list="issue-units" placeholder="Chai, hộp, thùng…" value={item.unit} onChange={event => updateLine(index, { unit: event.target.value })} /></Field>
               <Field label="Số lượng yêu cầu *"><input type="number" min="0.001" max="1000000" step="any" value={item.requested || ''} onChange={event => { const requested = Number(event.target.value); updateLine(index, { requested, quantity: item.quantity === item.requested ? requested : item.quantity }); }} /></Field>
-              <Field label={handover ? 'Số lượng bàn giao *' : 'Số lượng thực xuất *'}><input type="number" min="0" max={item.requested} step="any" value={item.quantity} onChange={event => updateLine(index, { quantity: Number(event.target.value) })} /></Field>
+              <Field label={handover ? 'Số lượng bàn giao *' : receipt ? 'Số lượng thực nhập *' : 'Số lượng thực xuất *'}><input type="number" min="0" max={item.requested} step="any" value={item.quantity} onChange={event => updateLine(index, { quantity: Number(event.target.value) })} /></Field>
               {!handover && <Field label="Đơn giá (đ) *"><input type="number" min="0" max="1000000000" step="1" value={item.unitPrice} onChange={event => updateLine(index, { unitPrice: Number(event.target.value) })} /></Field>}
               {!handover && <Field label="VAT *"><select value={item.vatRate} onChange={event => updateLine(index, { vatRate: Number(event.target.value) })}><option value={-1}>Chọn thuế suất</option>{[0, 5, 8, 10].map(rate => <option key={rate} value={rate}>{rate}%</option>)}</select></Field>}
               {!handover && <Field label="Chiết khấu"><div className="issue-discount-input"><input aria-label={`Chiết khấu ${index + 1}`} type="number" min="0" step={item.discountType === 'percent' ? '0.01' : '1'} max={item.discountType === 'percent' ? 100 : totals.lines[index]} value={item.discount ?? 0} onChange={event => updateLine(index, { discount: Number(event.target.value) })} /><select aria-label={`Đơn vị chiết khấu từng dòng ${index + 1}`} value={item.discountType ?? 'amount'} onChange={event => updateLine(index, { discountType: event.target.value as 'amount' | 'percent', discount: 0 })}><option value="amount">đ</option><option value="percent">%</option></select></div></Field>}
@@ -316,7 +343,7 @@ export function StockIssueManagement({ products, customers, user, onCustomersCha
             </div>
           </section>)}</div>
           <datalist id="issue-units">{['Chai', 'Hộp', 'Thùng', 'Gói', 'Cái', 'Bộ', 'Kg', 'Lít'].map(unit => <option value={unit} key={unit} />)}</datalist>
-          <button type="button" className="issue-button secondary" disabled={form.items.length >= 100} onClick={() => setForm(prev => ({ ...prev, items: [...prev.items, blankLine()] }))}><Plus size={20} />Thêm hàng bằng tay</button>
+          </fieldset>
           {!handover && <><div className="issue-totals">
             <Field label="Chiết khấu tổng bill"><div className="issue-discount-input"><input aria-label="Chiết khấu tổng bill" type="number" min="0" max={form.billDiscountType === 'percent' ? 100 : totals.subtotal - totals.productDiscount} step={form.billDiscountType === 'percent' ? '0.01' : '1'} value={form.billDiscount ?? 0} onChange={event => change('billDiscount', Number(event.target.value))} /><select aria-label="Đơn vị chiết khấu tổng bill" value={form.billDiscountType ?? 'amount'} onChange={event => { change('billDiscountType', event.target.value as 'amount' | 'percent'); change('billDiscount', 0); }}><option value="amount">đ</option><option value="percent">%</option></select></div></Field>
             <div><span>Tiền hàng</span><strong>{money(totals.subtotal)} đ</strong></div>
@@ -358,7 +385,7 @@ export function StockIssueManagement({ products, customers, user, onCustomersCha
           {(handover ? ([['keeper', 'Bên giao'], ['receiver', 'Bên nhận']] as const) : ([['receiver', 'Người nhận hàng ký'], ['keeper', 'Thủ kho'], ['accountant', 'Kế toán trưởng'], ['director', 'Giám đốc']] as const)).map(([key, label]) => <Field label={label} key={key}><input value={form[key]} onChange={event => change(key, event.target.value)} placeholder="Có thể để trống để ký tay" /></Field>)}
         </div></details>
       </fieldset>
-      <p className="issue-hint">Mục này lập và in chứng từ; tồn kho vẫn được cập nhật theo quy trình quản lý kho hiện tại.</p>
+      <p className="issue-hint">{!canPost ? 'Chỉ thủ kho và quản trị viên được ghi sổ. Bạn có thể soạn nháp và xem lại chứng từ đã lưu.' : form.sourceIssueId || form.sourceOrderId ? 'Ghi sổ chứng từ liên kết giữ nguyên số tồn của lần xuất gốc.' : receipt ? 'Khi ghi sổ, số lượng thực nhập được cộng vào kho đã chọn.' : 'Khi ghi sổ, số lượng thực xuất được trừ khỏi kho đã chọn.'}</p>
       <footer className="issue-action-bar">{handover ? <div><small>Biên bản bàn giao</small><strong>{form.items.length} mặt hàng</strong></div> : <div><small>Tổng tiền thanh toán</small><strong>{form.items.some(item => item.vatRate! < 0) ? 'Chọn đủ VAT' : `${money(totals.total)} đ`}</strong></div>}<button type="button" className="issue-button primary" onClick={openPreview}><Printer size={22} />Xem phiếu & in</button></footer>
     </>}
     {pendingAction && createPortal(<div className="issue-confirm-overlay"><section className="issue-confirm" role="dialog" aria-modal="true" aria-labelledby="issue-confirm-title">
@@ -368,8 +395,9 @@ export function StockIssueManagement({ products, customers, user, onCustomersCha
       <div className="issue-confirm-actions"><button autoFocus type="button" className="issue-button secondary" onClick={() => { setPendingAction(null); setError(''); }}>Hủy</button>{pendingAction.kind === 'new' && <button type="button" className="issue-button primary" onClick={() => completeAction(true)}>Lưu nháp</button>}<button type="button" className="issue-button danger" onClick={() => completeAction(false)}>{pendingAction.kind === 'delete' ? 'Chắc chắn xóa' : 'Bỏ phiếu đang soạn'}</button></div>
     </section></div>, document.body)}
     {error && !preview && !pendingAction && <div className="issue-error issue-error-fixed" role="alert">{error}<button aria-label="Đóng thông báo" onClick={() => setError('')}><X size={18} /></button></div>}
-    {preview && createPortal(<div className="issue-preview-root" role="dialog" aria-modal="true" aria-label={preview.data.documentType === 'handover' ? 'Xem trước biên bản bàn giao' : 'Xem trước phiếu xuất kho'}>
-      <div className="issue-preview-toolbar"><button autoFocus type="button" className="issue-button secondary" disabled={saving} onClick={() => { setPreview(null); setError(''); }}><ChevronLeft size={20} />Quay lại</button><div><strong>{preview.record ? preview.record.number : 'Kiểm tra phiếu trước khi in'}</strong><small>Khổ A4 · Chọn “Lưu dưới dạng PDF” trong cửa sổ in để tải PDF.</small></div><div className="issue-preview-actions">{preview.record ? <button type="button" className="issue-button secondary" disabled={saving} onClick={() => beginNew(preview.data)}><Copy size={18} />Sao chép để sửa</button> : <button type="button" className="issue-button secondary" disabled={saving} onClick={() => saveAndPrint(false)}>Lưu phiếu</button>}<button type="button" className="issue-button primary" disabled={saving} onClick={() => saveAndPrint(true)}><Printer size={20} />{saving ? 'Đang chuẩn bị…' : preview.record ? 'In phiếu / Lưu PDF' : 'Lưu phiếu & in'}</button></div></div>
+    {preview && createPortal(<div className="issue-preview-root" role="dialog" aria-modal="true" aria-label={documentName(preview.data.documentType)}>
+      <div className="issue-preview-toolbar"><button autoFocus type="button" className="issue-button secondary" disabled={saving} onClick={() => { setPreview(null); setError(''); }}><ChevronLeft size={20} />Quay lại</button><div><strong>{preview.record ? preview.record.number : 'Kiểm tra phiếu trước khi in'}</strong><small>Khổ A4 · Chọn “Lưu dưới dạng PDF” trong cửa sổ in để tải PDF.</small></div><div className="issue-preview-actions">{canPost && preview.record && !['receipt', 'handover'].includes(preview.record.documentType || '') && ['posted', 'linked'].includes(preview.record.inventoryStatus || '') && <button type="button" className="issue-button secondary" disabled={saving} onClick={() => beginNew({ ...preview.data, documentType: 'handover', reason: reasons.handover, sourceOrderId: undefined, sourceIssueId: preview.record!._id })}>Lập bàn giao theo phiếu này</button>}
+          {preview.record ? <button type="button" className="issue-button secondary" disabled={saving} onClick={() => beginNew({ ...preview.data, sourceIssueId: undefined, sourceOrderId: undefined })}><Copy size={18} />Sao chép thành phiếu mới</button> : <button type="button" className="issue-button secondary" disabled={saving || !canPost} onClick={() => saveAndPrint(false)}>Ghi sổ</button>}<button type="button" className="issue-button primary" disabled={saving || (!preview.record && !canPost)} onClick={() => saveAndPrint(true)}><Printer size={20} />{saving ? 'Đang chuẩn bị…' : preview.record ? 'In phiếu / Lưu PDF' : 'Ghi sổ & in'}</button></div></div>
       {error && <div className="issue-error" role="alert">{error}</div>}
       {preview.data.documentType !== 'handover' && preview.data.pricingVersion === 2 && <div className="issue-print-options">
         <strong>Hiển thị trên phiếu</strong>
@@ -379,7 +407,7 @@ export function StockIssueManagement({ products, customers, user, onCustomersCha
         }} />
         {preview.record && <small>Lựa chọn cho lần in này; nội dung phiếu đã lưu giữ nguyên.</small>}
       </div>}
-      {preview.record && <p className="issue-preview-notice" role="status"><Check size={16} />Phiếu đã được lưu. In lại không tạo thêm phiếu.</p>}
+      {preview.record && <p className="issue-preview-notice" role="status"><Check size={16} />{preview.record.inventoryStatus === 'legacy' ? 'Chứng từ cũ, chưa ghi biến động kho.' : preview.record.inventoryStatus === 'linked' ? 'Chứng từ liên kết với lần xuất hàng trước.' : 'Đã ghi sổ kho.'} In lại giữ nguyên tồn kho.</p>}
       <div className="issue-paper-scroll"><div className="issue-paper-fit" style={{ zoom: paperScale }}><StockIssuePaper data={preview.data} number={preview.record?.number} /></div></div>
     </div>, document.body)}
   </div>;

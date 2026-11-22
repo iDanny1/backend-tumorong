@@ -13,7 +13,9 @@ export interface StockIssueLine {
 }
 
 export interface StockIssueData {
-  documentType?: 'stock-issue' | 'handover';
+  documentType?: 'stock-issue' | 'handover' | 'receipt';
+  sourceIssueId?: string;
+  sourceOrderId?: string;
   date: string;
   companyName: string;
   companyAddress: string;
@@ -51,6 +53,7 @@ export interface StockIssueData {
 }
 
 export interface SavedStockIssue extends StockIssueData {
+  inventoryStatus?: 'posted' | 'linked' | 'legacy';
   _id: string;
   number: string;
   requestId: string;
@@ -177,8 +180,9 @@ export function moneyInWords(value: number): string {
 export function normalizeStockIssue(raw: unknown): StockIssueData {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Phiếu không hợp lệ.');
   let input = raw as Record<string, unknown>;
-  if (input.documentType !== undefined && !['stock-issue', 'handover'].includes(input.documentType as string)) throw new Error('Loại phiếu không hợp lệ.');
+  if (input.documentType !== undefined && !['stock-issue', 'handover', 'receipt'].includes(input.documentType as string)) throw new Error('Loại phiếu không hợp lệ.');
   const handover = input.documentType === 'handover';
+  const receipt = input.documentType === 'receipt';
   // Handover documents carry quantities only, including when copied from a priced issue.
   if (handover) input = { ...input, pricingVersion: 2, vatRate: 0, billDiscount: 0, billDiscountType: 'amount',
     paymentInfo: '', debitAccount: '', creditAccount: '', accountant: '', director: '',
@@ -250,6 +254,16 @@ export function normalizeStockIssue(raw: unknown): StockIssueData {
   if (items.reduce((sum, item) => sum + Math.round(item.quantity * item.unitPrice), 0) > 999_999_999_999) throw new Error('Tiền hàng vượt giới hạn 999.999.999.999 đồng.');
   if (stockIssueAmounts({ items, vatRate, ...pricing } as StockIssueData).total > 999_999_999_999) throw new Error('Tổng phiếu vượt giới hạn 999.999.999.999 đồng.');
   const details: Partial<StockIssueData> = {};
+  for (const key of ['sourceIssueId', 'sourceOrderId'] as const) {
+    if (input[key] === undefined || input[key] === '') continue;
+    const id = input[key];
+    if (typeof id !== 'string' || id.length > 102) throw new Error('Mã chứng từ liên kết không hợp lệ.');
+    if (/^[a-f\d]{24}$/i.test(id)) details[key] = id.toLowerCase();
+    else if (key === 'sourceOrderId' && /^DH.{1,100}$/.test(id)) details[key] = id;
+    else throw new Error('Mã chứng từ liên kết không hợp lệ.');
+  }
+  if (details.sourceIssueId && (!handover || details.sourceOrderId)) throw new Error('Chỉ biên bản bàn giao mới được liên kết với một phiếu xuất.');
+  if (receipt && details.sourceOrderId) throw new Error('Phiếu nhập không thể liên kết với đơn xuất hàng.');
   if (input.noCompany !== undefined && typeof input.noCompany !== 'boolean') throw new Error('Lựa chọn công ty không hợp lệ.');
   const noCompany = modern && input.noCompany === true;
   if (noCompany) details.noCompany = true;
@@ -261,7 +275,7 @@ export function normalizeStockIssue(raw: unknown): StockIssueData {
   if (modern && input.creatorPhone) details.creatorPhone = text('creatorPhone', 'SĐT người lập phiếu', false, 30);
   if (modern && input.paymentInfo !== undefined) details.paymentInfo = text('paymentInfo', 'Thông tin thanh toán');
   return {
-    ...(handover ? { documentType: 'handover' as const } : {}), ...pricing, ...display, ...details, date, companyName: noCompany ? '' : text('companyName', 'Tên công ty', true), companyAddress: noCompany ? '' : text('companyAddress', 'Địa chỉ công ty', true),
+    ...(handover ? { documentType: 'handover' as const } : receipt ? { documentType: 'receipt' as const } : {}), ...pricing, ...display, ...details, date, companyName: noCompany ? '' : text('companyName', 'Tên công ty', true), companyAddress: noCompany ? '' : text('companyAddress', 'Địa chỉ công ty', true),
     customerId: text('customerId', 'Mã khách hàng'), recipient: text('recipient', 'Họ và tên người nhận hàng', !modern), phone: text('phone', 'SĐT người nhận', false, 30),
     address: text('address', 'Địa chỉ'), deliveryAddress: text('deliveryAddress', 'Địa điểm giao hàng'),
     reason: text('reason', 'Lý do xuất', true), warehouseId: text('warehouseId', 'Mã kho'), warehouseName: text('warehouseName', 'Kho xuất', true), warehouseLocation: text('warehouseLocation', 'Địa điểm kho'),

@@ -8,7 +8,9 @@ export function recoverIssueDraft(value: unknown, creator: string): IssueDraft |
   const stored = value as any;
   if (!stored?.form || typeof stored.requestId !== 'string' || !Array.isArray(stored.form.items)) return null;
   const form = freshIssue(creator);
-  if (stored.form.documentType === 'handover') form.documentType = 'handover';
+  if (stored.form.documentType === 'handover' || stored.form.documentType === 'receipt') form.documentType = stored.form.documentType;
+  if (typeof stored.form.sourceIssueId === 'string') form.sourceIssueId = stored.form.sourceIssueId;
+  if (typeof stored.form.sourceOrderId === 'string') form.sourceOrderId = stored.form.sourceOrderId;
   for (const key of Object.keys(form) as (keyof StockIssueData)[]) {
     if (key !== 'items' && typeof stored.form[key] === typeof form[key]) (form as any)[key] = stored.form[key];
   }

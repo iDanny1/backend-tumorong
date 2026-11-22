@@ -15,16 +15,15 @@ import {
 import { Pencil } from 'lucide-react';
 import { warehouseAddress } from '../../lib/warehouse';
 import { Warehouse, Product } from '../../types';
-import { NumberInput } from '../ui/NumberInput';
-import { cn } from '../../lib/utils';
 import { api } from '../../lib/api';
 
 interface WarehouseManagementProps {
   products: Product[];
-  onUpdateProductStock: (productId: string, warehouseStock: { [key: string]: number }, totalStock: number) => void;
+  onRefresh: () => Promise<void>;
+  onDocument: (type: 'receipt' | 'stock-issue', warehouse: Warehouse) => void;
 }
 
-const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onUpdateProductStock }) => {
+const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onRefresh, onDocument }) => {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -92,26 +91,30 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onU
       fetchWarehouses();
     } catch (err) {
       console.error("Error deleting warehouse:", err);
-      setWarehouseError('Chưa xóa được kho. Vui lòng thử lại.');
+      setWarehouseError(err instanceof Error ? err.message : 'Chưa xóa được kho. Vui lòng thử lại.');
     }
   };
 
-  const handleUpdateStock = (productId: string, warehouseId: string, newStock: number) => {
-    const product = products.find(p => p._id === productId);
-    if (!product) return;
-
-    const currentWarehouseStock = product.warehouseStock || {};
-    const updatedWarehouseStock = { ...currentWarehouseStock, [warehouseId]: newStock };
-    
-    // Calculate total stock across all warehouses
-    const totalStock = Object.values(updatedWarehouseStock).reduce((sum: number, val: number) => sum + val, 0);
-    
-    onUpdateProductStock(productId, updatedWarehouseStock, totalStock);
-  };
+  const [allocating, setAllocating] = useState(false);
+  async function allocate(product: Product, warehouse: Warehouse, available: number) {
+    const input = window.prompt(`Phân bổ bao nhiêu ${product.unit || 'đơn vị'} ${product.name} vào ${warehouse.name}? Còn ${available} chưa phân kho.`, String(available));
+    if (input === null) return;
+    const quantity = Number(input.trim().replace(',', '.'));
+    if (!Number.isFinite(quantity) || quantity <= 0 || quantity > available) {
+      setWarehouseError('Số lượng phải lớn hơn 0 và không vượt tồn chưa phân kho.');
+      return;
+    }
+    setAllocating(true); setWarehouseError('');
+    try {
+      await api.patch(`/api/products/${product._id}/stock`, { warehouseId: warehouse._id, quantity, expectedUnallocated: available });
+    } catch (error) {
+      setWarehouseError(error instanceof Error ? error.message : 'Chưa phân bổ được tồn kho.');
+    } finally { await onRefresh(); setAllocating(false); }
+  }
 
   const selectedWarehouse = allWarehouses.find(w => w._id === selectedWarehouseId);
   const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
     p.sku?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -145,7 +148,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onU
                 <Box className="w-4 h-4" />
                 Danh sách kho ({allWarehouses.length})
               </h2>
-              <button type="button" className="text-sm text-emerald-700 mt-2" disabled={loading} onClick={() => { void fetchWarehouses(); }}><RefreshCw className="w-4 h-4 inline mr-1" />{loading ? 'Đang tải…' : 'Tải lại danh sách kho'}</button>
+              <button type="button" className="text-sm text-emerald-700 mt-2" disabled={loading} onClick={() => { void fetchWarehouses(); void onRefresh(); }}><RefreshCw className="w-4 h-4 inline mr-1" />{loading ? 'Đang tải…' : 'Tải lại danh sách kho'}</button>
             </div>
             <div className="divide-y divide-slate-100">
               {allWarehouses.map((w) => (
@@ -200,9 +203,13 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onU
                   <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">
                     Tồn kho tại: {selectedWarehouse.name}
                   </h2>
-                  <p className="text-xs text-slate-500">Điều chỉnh số lượng sản phẩm thực tế tại kho này</p>
+                  <p className="text-xs text-slate-500">{selectedWarehouse._id === TOTAL_WAREHOUSE_ID ? 'Chọn kho bên trái để lập phiếu nhập hoặc xuất.' : 'Số lượng cập nhật khi ghi sổ chứng từ.'}</p>
                   <p className="text-sm text-slate-600 mt-1"><MapPin className="w-4 h-4 inline mr-1" />{warehouseAddress(selectedWarehouse) || 'Chưa có địa chỉ'}</p>
                 </div>
+                {selectedWarehouse._id !== TOTAL_WAREHOUSE_ID && <div className="flex gap-2">
+                  <button type="button" className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold text-white" onClick={() => onDocument('receipt', selectedWarehouse)}>Phiếu nhập</button>
+                  <button type="button" className="rounded-lg border px-3 py-2 text-sm font-bold" onClick={() => onDocument('stock-issue', selectedWarehouse)}>Phiếu xuất</button>
+                </div>}
                 <div className="relative w-full md:w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input 
@@ -229,6 +236,7 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onU
                   <tbody className="divide-y divide-slate-50">
                     {filteredProducts.map((product) => {
                       const isTotalWarehouse = selectedWarehouse._id === TOTAL_WAREHOUSE_ID;
+                      const available = Math.max(0, Math.round(((product.stock || 0) - Object.values(product.warehouseStock || {}).reduce((sum, qty) => sum + qty, 0)) * 1000) / 1000);
                       const stockInThisWarehouse = isTotalWarehouse ? product.stock : (product.warehouseStock?.[selectedWarehouse._id] || 0);
                       return (
                         <tr key={product._id} className="hover:bg-slate-50/50 transition-colors group">
@@ -249,13 +257,9 @@ const WarehouseManagement: React.FC<WarehouseManagementProps> = ({ products, onU
                           </td>
                           <td className="p-4">
                             <div className="flex items-center gap-2">
-                              <NumberInput 
-                                className={cn("w-24", isTotalWarehouse && "bg-slate-50 cursor-not-allowed")}
-                                value={stockInThisWarehouse}
-                                disabled={isTotalWarehouse}
-                                onChange={(val) => !isTotalWarehouse && handleUpdateStock(product._id, selectedWarehouse._id, val)}
-                              />
+                              <strong>{stockInThisWarehouse || 0}</strong>
                               <span className="text-10 text-slate-400 font-medium">{product.unit || 'Cái'}</span>
+                              {!isTotalWarehouse && available > 0 && <button type="button" disabled={allocating} className="rounded border px-2 py-1 text-xs text-emerald-700" onClick={() => void allocate(product, selectedWarehouse, available)}>Phân bổ tồn cũ ({available})</button>}
                             </div>
                           </td>
                           <td className="p-4">

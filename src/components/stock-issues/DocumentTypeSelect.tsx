@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type DocumentType = 'stock-issue' | 'handover' | 'quotation';
+export type DocumentType = 'stock-issue' | 'receipt' | 'handover' | 'quotation';
 
 interface Props {
   value: DocumentType;
@@ -12,6 +12,7 @@ export function DocumentTypeSelect({ value, onChange, disabled }: Props) {
   return <label className="issue-field">
     <span>Loại phiếu</span>
     <select aria-label="Loại phiếu" value={value} disabled={disabled} onChange={event => onChange(event.target.value as DocumentType)}>
+      <option value="receipt">Phiếu nhập kho</option>
       <option value="stock-issue">Phiếu xuất kho</option>
       <option value="handover">Biên bản bàn giao</option>
       <option value="quotation">Báo giá</option>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   ArrowLeft,
   ChevronLeft, 
@@ -6,7 +6,6 @@ import {
   ExternalLink, 
   User, 
   Store, 
-  AlertTriangle, 
   Check, 
   Phone, 
   MapPin, 
@@ -18,7 +17,7 @@ import {
   Trash2,
   Bell
 } from 'lucide-react';
-import { Order } from '../../types';
+import { Order, Warehouse } from '../../types';
 import { cn } from '../../lib/utils';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -35,11 +34,23 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack, onUpdat
   const [currentStatus, setCurrentStatus] = useState(order.status);
   const [paymentStatus, setPaymentStatus] = useState(order.paymentStatus || 'Chưa thanh toán');
   const [note, setNote] = useState('');
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [warehouseId, setWarehouseId] = useState(order.warehouseId || '');
+  const [warehouseError, setWarehouseError] = useState(false);
+  useEffect(() => {
+    let active = true;
+    api.get('/api/warehouses').then((rows: Warehouse[]) => {
+      if (active) setWarehouses(rows);
+    }).catch(() => { if (active) setWarehouseError(true); });
+    return () => { active = false; };
+  }, []);
+  const warehouseChange = !order.stockDeducted && warehouseId !== (order.warehouseId || '') ? { warehouseId } : {};
 
   const handleUpdate = () => {
     onUpdate(order._id, { 
       status: currentStatus, 
-      paymentStatus: paymentStatus 
+      paymentStatus,
+      ...warehouseChange,
     });
   };
 
@@ -78,6 +89,7 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack, onUpdat
         onUpdate(order._id, { 
           status: 'Đang giao',
           shippingUnit: 'GHN',
+          ...warehouseChange,
           order_code: orderCode
         });
 
@@ -306,19 +318,22 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, onBack, onUpdat
           </div>
 
           <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
-            <h3 className="text-[13px] font-black text-slate-800 mb-6">Thông tin cửa hàng</h3>
-            <div className="text-[13px] space-y-2 text-slate-600">
-              <p className="font-bold text-slate-800">Head Office</p>
-              <p>Kho: Kho mặc định</p>
-            </div>
-          </div>
-
-          <div className="bg-[#FFF9E6] border border-[#FFE7A3] rounded-xl p-5 flex gap-4">
-            <AlertTriangle className="w-6 h-6 text-[#F59E0B] shrink-0" />
-            <div className="text-[13px] text-[#92400E]">
-              <p className="font-bold mb-1 leading-tight">Cảnh báo: Kho Kho mặc định không đủ tồn kho</p>
-              <p className="opacity-80">Trà hòa tan Sâm Ngọc Linh (cần 1, còn 0)</p>
-            </div>
+            <label htmlFor="order-warehouse" className="block text-[13px] font-black text-slate-800 mb-3">Kho xuất hàng</label>
+            {order.stockDeducted ? (
+              <ul aria-label="Hàng đã xuất" className="text-sm space-y-2 text-slate-700">
+                {order.inventoryAllocations?.length ? order.inventoryAllocations.map((line, index) =>
+                  <li key={index}>{order.products?.find(p => p.id === line.productId)?.name || line.productId}
+                    {' · '}{line.quantity}{' · '}{line.warehouseId ? warehouses.find(w => w._id === line.warehouseId)?.name || line.warehouseId : 'Tồn chưa phân bổ'}</li>
+                ) : <li>Đơn cũ đã trừ tồn, chưa có chi tiết từng kho.</li>}
+              </ul>
+            ) : (
+              <select id="order-warehouse" value={warehouseId} onChange={event => setWarehouseId(event.target.value)}
+                className="w-full bg-white border border-slate-200 rounded py-2 px-3 text-sm">
+                <option value="">Tự động phân bổ</option>
+                {warehouses.filter(w => w.active !== false).map(w => <option key={w._id} value={w._id}>{w.name}</option>)}
+              </select>
+            )}
+            {warehouseError && <p className="mt-2 text-sm text-amber-700">Chưa tải được danh sách kho. Hãy tải lại trang để chọn kho.</p>}
           </div>
 
           <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-8">

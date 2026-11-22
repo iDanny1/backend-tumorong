@@ -1,26 +1,33 @@
 import { Router, type Response } from 'express';
+import { isDeepStrictEqual } from 'node:util';
 import mongoose, { Schema } from 'mongoose';
-import { normalizeStockIssue, stockIssueAmounts } from '../lib/stockIssue.js';
+import { normalizeStockIssue, stockIssueAmounts, type StockIssueData } from '../lib/stockIssue.js';
 import { STOCK_ISSUE_HISTORY_START, STOCK_ISSUE_HISTORY_PAGE_SIZE, STOCK_ISSUE_DAY_PAGE_SIZE } from '../lib/stockIssueHistory.js';
 import { customerFromStockIssue, syncDocumentCustomer } from '../services/documentCustomer.js';
+import { applyWarehouseMovement, inventoryTransaction, InventoryError } from '../services/inventory.js';
+import { linkDeductedOrder } from '../services/orderInventory.js';
 
 const issueSchema = new Schema({
   requestId: { type: String, required: true, unique: true },
   number: { type: String, required: true, unique: true },
   data: { type: Schema.Types.Mixed, required: true },
   totals: { type: Schema.Types.Mixed, required: true },
+  inventoryStatus: { type: String, enum: ['posted', 'linked'] },
+  postedBy: String,
 }, { timestamps: true });
 issueSchema.index({ 'data.date': -1, createdAt: -1, _id: -1 });
+issueSchema.index({ 'data.sourceIssueId': 1 }, { unique: true, sparse: true });
 export const StockIssue = mongoose.model('StockIssue', issueSchema);
 const counterSchema = new Schema({ _id: String, value: { type: Number, default: 0 } });
 const StockIssueCounter = mongoose.model('StockIssueCounter', counterSchema);
 const router = Router();
-const serialize = (doc: any) => ({ ...doc.data, _id: String(doc._id), number: doc.number, requestId: doc.requestId, createdAt: doc.createdAt });
+const serialize = (doc: any) => ({ ...doc.data, _id: String(doc._id), number: doc.number, requestId: doc.requestId, createdAt: doc.createdAt,
+  inventoryStatus: doc.inventoryStatus ?? 'legacy' });
 
 async function respondWithCustomer(res: Response, doc: any, status = 200) {
   try {
     // Run on identical retries too: a saved paper can recover a failed CRM write.
-    await syncDocumentCustomer(customerFromStockIssue(doc.data));
+    if (doc.data.documentType !== 'receipt') await syncDocumentCustomer(customerFromStockIssue(doc.data));
     return res.status(status).json(serialize(doc));
   } catch {
     return res.status(503).json({ documentSaved: true, requestId: doc.requestId, number: doc.number,
@@ -78,8 +85,16 @@ router.get('/', async (req, res) => {
   }
 });
 
+// A handover tied to an issued shipment is evidence of that same delivery.
+// Compare physical quantities only; the financial columns differ by document type.
+function deliveredLines(data: StockIssueData) {
+  return data.items.filter(item => item.quantity > 0)
+    .map(({ productId, quantity }) => ({ productId, quantity }))
+    .sort((a, b) => a.productId.localeCompare(b.productId) || a.quantity - b.quantity);
+}
+
 router.post('/', async (req, res) => {
-  let data;
+  let data: StockIssueData;
   const requestId = req.body?.requestId;
   try {
     if (typeof requestId !== 'string' || !/^[a-zA-Z0-9-]{16,80}$/.test(requestId)) throw new Error('Mã lưu phiếu không hợp lệ. Vui lòng tải lại trang.');
@@ -93,21 +108,45 @@ router.post('/', async (req, res) => {
     // Durable idempotency: retrying a lost response must not create a second paper.
     const existing = await StockIssue.findOne({ requestId }).lean();
     if (existing) {
-      if (JSON.stringify(existing.data) !== JSON.stringify(data)) return res.status(409).json({ message: 'Phiếu này đã được lưu với nội dung khác. Hãy mở Phiếu đã lưu để kiểm tra và tạo bản sao nếu cần sửa.' });
+      if (!isDeepStrictEqual(existing.data, data)) return res.status(409).json({ message: 'Phiếu này đã được lưu với nội dung khác. Hãy mở Phiếu đã lưu để kiểm tra và tạo bản sao nếu cần sửa.' });
       return respondWithCustomer(res, existing);
     }
+    if (!mongoose.isObjectIdOrHexString(data.warehouseId)) return res.status(400).json({ message: 'Vui lòng chọn kho từ danh mục trước khi ghi sổ.' });
+    const missingProduct = data.items.findIndex(item => !mongoose.isObjectIdOrHexString(item.productId));
+    if (missingProduct >= 0) return res.status(400).json({ message: `Dòng ${missingProduct + 1} chưa liên kết sản phẩm. Vui lòng chọn hàng từ danh mục.` });
+    const lines = deliveredLines(data);
     const day = data.date.replaceAll('-', '');
-    const prefix = data.documentType === 'handover' ? 'BBBG' : 'PXK';
+    const prefix = data.documentType === 'handover' ? 'BBBG' : data.documentType === 'receipt' ? 'PNK' : 'PXK';
     const counter = await StockIssueCounter.findOneAndUpdate({ _id: prefix === 'PXK' ? day : `${prefix}:${day}` }, { $inc: { value: 1 } }, { upsert: true, new: true });
     const number = `${prefix}${day}-${String(counter.value).padStart(4, '0')}`;
-    // Paper records intentionally do not mutate orders, stock, or customer spending.
-    const doc = await StockIssue.create({ requestId, number, data, totals: stockIssueAmounts(data) });
+    const doc = await inventoryTransaction(async session => {
+      const linked = Boolean(data.sourceIssueId || data.sourceOrderId);
+      // Claim the request before mutating stock. A failed movement rolls back
+      // this insert and every touched product in the same transaction.
+      const [saved] = await StockIssue.create([{ requestId, number, data, totals: stockIssueAmounts(data),
+        inventoryStatus: linked ? 'linked' : 'posted', postedBy: req.adminUser?.username }], { session });
+      if (data.sourceIssueId) {
+        const source = await StockIssue.findById(data.sourceIssueId, null, { session }).lean();
+        if (!source?.inventoryStatus || ['handover', 'receipt'].includes(source.data.documentType)
+          || source.data.warehouseId !== data.warehouseId || !isDeepStrictEqual(deliveredLines(source.data), lines)) {
+          throw new InventoryError(409, 'Biên bản phải khớp kho và số lượng từng dòng của phiếu xuất đã ghi sổ.');
+        }
+      } else if (data.sourceOrderId) {
+        await linkDeductedOrder(session, data.sourceOrderId, data.warehouseId, lines, requestId);
+      } else {
+        await applyWarehouseMovement(session, data.warehouseId, lines, data.documentType === 'receipt' ? 'in' : 'out');
+      }
+      return saved;
+    });
     return respondWithCustomer(res, doc, 201);
   } catch (error: any) {
+    if (error instanceof InventoryError) return res.status(error.status).json({ message: error.message });
     if (error.code === 11000) {
       const existing = await StockIssue.findOne({ requestId }).lean().catch(() => null);
-      if (existing && JSON.stringify(existing.data) === JSON.stringify(data)) return respondWithCustomer(res, existing);
-      return res.status(409).json({ message: 'Phiếu đang được lưu. Vui lòng bấm lưu lại sau vài giây.' });
+      if (existing && isDeepStrictEqual(existing.data, data)) return respondWithCustomer(res, existing);
+      const message = error.keyPattern?.['data.sourceIssueId'] ? 'Phiếu xuất này đã có biên bản bàn giao. Vui lòng mở lịch sử để in lại.'
+        : 'Số phiếu hoặc mã yêu cầu đã được sử dụng. Vui lòng kiểm tra lịch sử phiếu.';
+      return res.status(409).json({ message });
     }
     res.status(500).json({ message: 'Chưa lưu được phiếu. Nội dung vẫn được giữ trên máy, bạn có thể thử lại.' });
   }

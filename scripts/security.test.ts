@@ -90,7 +90,7 @@ test('sales and warehouse rights are enforced independently of frontend buttons'
       assert.equal((await f.request('/api/orders')).status,role === 'sales' ? 200 : 403);
       assert.equal((await f.request('/api/products/abc/stock','PATCH',{},headers)).status,role === 'warehouse' ? 200 : 403);
       assert.equal((await f.request('/api/products','POST',{},headers)).status,role === 'sales' ? 200 : 403);
-      assert.equal((await f.request('/api/stock-issues','POST',{},headers)).status,200);
+      assert.equal((await f.request('/api/stock-issues','POST',{},headers)).status,role === 'warehouse' ? 200 : 403);
     } finally { await f.close(); }
   }
 });

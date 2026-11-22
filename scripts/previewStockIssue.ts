@@ -1,11 +1,12 @@
 // Isolated manual preview: no dotenv, MongoDB, production API or stock mutations.
 import express from 'express';
 import { createServer } from 'vite';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { normalizeStockIssue, type SavedStockIssue } from '../src/lib/stockIssue.js';
 import { normalizeQuote, quoteCompanies, quoteHistoryPageSize, quoteNumber, quoteRequestId, type SavedQuote } from '../src/lib/quotation.js';
-import { demoCustomer, demoProducts } from './stockIssueDemoData.js';
+import { demoCustomer, demoProducts, demoWarehouseId } from './stockIssueDemoData.js';
+import { quantitiesByProduct } from '../src/services/inventory.js';
 import { STOCK_ISSUE_HISTORY_START, STOCK_ISSUE_HISTORY_PAGE_SIZE, STOCK_ISSUE_DAY_PAGE_SIZE } from '../src/lib/stockIssueHistory.js';
 
 const app = express();
@@ -51,7 +52,7 @@ app.put('/api/customers/:id', (req, res) => {
   res.json(customer);
 });
 app.get('/api/integrations/appsheet/status', (_req, res) => res.json({ enabled: false, state: 'disabled', message: 'Bản thử chưa gửi dữ liệu lên Google Sheets hoặc AppSheet.' }));
-app.get('/api/warehouses', (_req, res) => res.json([{ _id: 'demo-warehouse', name: 'Kho quận 1', address: '38/15 Nguyễn Giản Thanh, Phường Hòa Hưng, Thành phố Hồ Chí Minh' }]));
+app.get('/api/warehouses', (_req, res) => res.json([{ _id: demoWarehouseId, name: 'Kho quận 1', address: '38/15 Nguyễn Giản Thanh, Phường Hòa Hưng, Thành phố Hồ Chí Minh' }]));
 app.get('/api/stock-issues', (req, res) => {
   const q = String(req.query.q || '').toLocaleLowerCase();
   res.json(records.filter(record => `${record.number} ${record.recipient} ${record.organizationName || ''} ${record.phone}`.toLocaleLowerCase().includes(q)).slice(0, 50));
@@ -75,8 +76,33 @@ app.post('/api/stock-issues', (req, res) => {
   try {
     const data = normalizeStockIssue(req.body);
     const existing = records.find(record => record.requestId === req.body.requestId);
-    if (existing) return res.json(existing);
-    const record = { ...data, _id: randomUUID(), number: `PXK${data.date.replaceAll('-', '')}-${String(records.length + 1).padStart(4, '0')}`, requestId: req.body.requestId, createdAt: new Date().toISOString() };
+    if (existing) {
+      if (!isDeepStrictEqual(normalizeStockIssue(existing), data)) return res.status(409).json({ message: 'Phiếu thử đã lưu với nội dung khác.' });
+      return res.json(existing);
+    }
+    if (data.warehouseId !== demoWarehouseId || data.items.some(item => !demoProducts.some(product => product._id === item.productId))) throw new Error('Vui lòng chọn kho và sản phẩm trong danh mục mẫu.');
+    if (data.sourceOrderId) throw new Error('Bản chạy thử chưa có đơn hàng mẫu để liên kết.');
+    const quantities = quantitiesByProduct(data.items.filter(item => item.quantity > 0));
+    if (data.sourceIssueId) {
+      const source = records.find(doc => doc._id === data.sourceIssueId);
+      if (!source || source.documentType === 'handover' || source.documentType === 'receipt'
+        || records.some(doc => doc.sourceIssueId === source._id)
+        || !isDeepStrictEqual(quantities, quantitiesByProduct(source.items.filter(item => item.quantity > 0)))) throw new Error('Phiếu xuất gốc không khớp hoặc đã có biên bản bàn giao.');
+    } else {
+      const updates = [...quantities].map(([id, qty]) => {
+        const product = demoProducts.find(row => row._id === id)!;
+        const stock = product.stock + (data.documentType === 'receipt' ? qty : -qty);
+        if (stock < 0) throw new Error(`Sản phẩm “${product.name}” chỉ còn ${product.stock} trong kho mẫu.`);
+        return { product, stock };
+      });
+      for (const { product, stock } of updates) {
+        product.stock = stock;
+        product.warehouseStock = { [demoWarehouseId]: stock };
+      }
+    }
+    const prefix = data.documentType === 'receipt' ? 'PNK' : data.documentType === 'handover' ? 'BBBG' : 'PXK';
+    const record: SavedStockIssue = { ...data, _id: randomBytes(12).toString('hex'), inventoryStatus: data.sourceIssueId ? 'linked' : 'posted',
+      number: `${prefix}${data.date.replaceAll('-', '')}-${String(records.length + 1).padStart(4, '0')}`, requestId: req.body.requestId, createdAt: new Date().toISOString() };
     records.unshift(record); res.status(201).json(record);
   } catch (error) { res.status(400).json({ message: (error as Error).message }); }
 });

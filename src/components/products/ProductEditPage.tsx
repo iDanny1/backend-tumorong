@@ -236,7 +236,7 @@ export const ProductEditPage: React.FC<ProductEditPageProps> = ({
             <div className="grid grid-cols-3 gap-6">
               <div>
                 <label className="block text-11 font-bold text-slate-500 uppercase mb-1">
-                  Số lượng tồn kho <span className="text-emerald-600 font-normal text-10">(Chỉ xem - Sửa tại Quản lý kho)</span>
+                  Số lượng tồn kho <span className="text-emerald-600 font-normal text-10">(Cập nhật bằng phiếu nhập, xuất kho)</span>
                 </label>
                 <NumberInput 
                   value={formData.stock}

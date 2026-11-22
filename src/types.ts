@@ -29,6 +29,9 @@ export interface Order {
   platform?: string;
   order_code?: string;
   stockDeducted?: boolean;
+  warehouseId?: string;
+  inventoryAllocations?: { productId: string; warehouseId: string; quantity: number }[];
+  inventoryDocumentRequestId?: string;
   address?: string;
   discountAmount?: number;
   invoice?: any;
@@ -74,6 +77,7 @@ export interface Category {
 }
 
 export interface Warehouse {
+  active?: boolean;
   _id: string;
   name: string;
   location?: string;

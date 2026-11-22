@@ -84,7 +84,9 @@ export function startAppSheetSync(Customer: Model<any>, StockIssue: Model<any>) 
       for await (const customer of Customer.find({}).select('_id name phone address email type').sort({ _id: 1 }).lean().cursor()) {
         await sync(`customer:${customer._id}`, [{ table: 'customers', values: customerRow(customer) }]);
       }
-      for await (const doc of StockIssue.find({}).sort({ _id: 1 }).lean().cursor()) {
+      // The AppSheet tables describe outbound sales. Receipts and accompanying
+      // handovers do not represent another outgoing shipment.
+      for await (const doc of StockIssue.find({ 'data.documentType': { $ne: 'receipt' }, 'data.sourceIssueId': { $exists: false } }).sort({ _id: 1 }).lean().cursor()) {
         const issue = issueRows({ ...doc.data, _id: String(doc._id), number: doc.number, requestId: doc.requestId, createdAt: doc.createdAt });
         await sync(`issue:${doc._id}`, [{ table: 'issues', values: issue.header }, ...issue.lines.map(values => ({ table: 'lines' as const, values }))]);
       }

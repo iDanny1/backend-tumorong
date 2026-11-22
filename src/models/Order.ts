@@ -25,6 +25,11 @@ export interface IOrder extends Document {
   voucherCode?: string;
   discountAmount?: number;
   stockDeducted?: boolean;
+  warehouseId?: string;
+  inventoryAllocations?: { productId: string; warehouseId: string; quantity: number }[];
+  inventoryDocumentRequestId?: string;
+  voucherUsageReleased?: boolean;
+  order_code?: string;
   createdAt: string;
 }
 const orderSchema = new Schema<IOrder>({
@@ -51,6 +56,14 @@ const orderSchema = new Schema<IOrder>({
   voucherCode: String,
   discountAmount: Number,
   stockDeducted: { type: Boolean, default: false },
+  warehouseId: String,
+  inventoryAllocations: {
+    type: [new Schema({ productId: String, warehouseId: String, quantity: Number }, { _id: false })],
+    default: undefined
+  },
+  inventoryDocumentRequestId: String,
+  voucherUsageReleased: Boolean,
+  order_code: String,
   createdAt: { type: String, default: () => new Date().toISOString() }
 });
 export const Order: Model<IOrder> = mongoose.model('Order', orderSchema);

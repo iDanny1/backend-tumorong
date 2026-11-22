@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import crypto from 'node:crypto';
 import { Order } from '../models/Order.js';
 import { Customer } from '../models/Customer.js';
@@ -6,7 +6,8 @@ import { Voucher } from '../models/StoreVoucher.js';
 import { AdvancedVoucher } from '../models/AdvancedVoucher.js';
 import { UserVoucherUsage } from '../models/UserVoucherUsage.js';
 import { customerFromOrder, syncDocumentCustomer } from '../services/documentCustomer.js';
-import { syncOrderInventory } from '../services/orderInventory.js';
+import { updateOrder, deleteOrder, orderLines } from '../services/orderInventory.js';
+import { InventoryError } from '../services/inventory.js';
 
 const router = Router({ caseSensitive: true });
 
@@ -66,6 +67,7 @@ router.post('/', async (req, res) => {
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: 'Đơn hàng phải có ít nhất 1 sản phẩm' });
     }
+    orderLines(items);
     const parsedTotal = Number(totalAmount);
     if (isNaN(parsedTotal) || parsedTotal <= 0) {
       return res.status(400).json({ success: false, message: 'Tổng tiền đơn hàng không hợp lệ' });
@@ -99,7 +101,7 @@ router.post('/', async (req, res) => {
 
     const newOrder = await Order.create(orderData);
     console.log(`✅ Đơn hàng Zalo mới: ${orderCode} | _id: ${newOrder._id}`);
-    await syncOrderInventory(newOrder, newOrder.status);
+
 
     // ── CẬP NHẬT LƯỢT DÙNG VOUCHER (ĐỒNG BỘ ADVANCED, LEGACY & USER USAGE) ──
     if (voucherCode) {
@@ -168,6 +170,7 @@ router.post('/', async (req, res) => {
       message: 'Đặt hàng thành công'
     });
   } catch (err) {
+    if (err instanceof InventoryError) return res.status(err.status).json({ success: false, message: err.message });
     console.error('❌ Lỗi tạo đơn hàng:');
     return res.status(500).json({ success: false, message: 'Không thể lưu đơn hàng, vui lòng thử lại' });
   }
@@ -191,57 +194,24 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// PATCH /api/orders/:id — Cập nhật trạng thái đơn hàng (pending/confirmed/shipping/delivered/cancelled)
-router.patch('/:id', async (req, res) => {
+const updateStatus: RequestHandler<{ id: string }> = async (req, res) => {
   try {
-    const { id } = req.params;
-    const allowedFields = ['status', 'paymentStatus', 'note', 'ghnOrderCode'];
-    const update: any = {};
-    for (const field of allowedFields) {
-      if (req.body[field] !== undefined) update[field] = req.body[field];
-    }
-    if (Object.keys(update).length === 0) {
-      return res.status(400).json({ success: false, message: 'Không có trường hợp lệ để cập nhật' });
-    }
-
-    // Tìm theo orderCode hoặc _id
-    let doc = id.startsWith('DH')
-      ? await Order.findOneAndUpdate({ orderCode: id }, { $set: update }, { new: true })
-      : null;
-    if (!doc) {
-      try { doc = await Order.findByIdAndUpdate(id, { $set: update }, { new: true }); } catch (_) {}
-    }
-    if (!doc) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
-
-    await syncOrderInventory(doc, doc.status);
-    res.json({ success: true, data: doc });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
+    const data = await updateOrder(req.params.id, req.body);
+    res.json({ success: true, data });
+  } catch (error) {
+    if (error instanceof InventoryError) return res.status(error.status).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Không thể lưu thay đổi đơn hàng. Vui lòng thử lại.' });
   }
-});
-
-router.put('/:id', async (req, res) => {
-  try {
-    let doc = req.params.id.startsWith('DH')
-      ? await Order.findOneAndUpdate({ orderCode: req.params.id }, { $set: req.body }, { new: true })
-      : null;
-    if (!doc) {
-      try { doc = await Order.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true }); } catch (_) {}
-    }
-    if (doc) {
-      await syncOrderInventory(doc, doc.status);
-    }
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
-  }
-});
+};
+router.patch('/:id', updateStatus);
+router.put('/:id', updateStatus);
 
 router.delete('/:id', async (req, res) => {
   try {
-    await Order.findByIdAndDelete(req.params.id);
+    await deleteOrder(req.params.id);
     res.json({ success: true });
-  } catch (err) {
+  } catch (error) {
+    if (error instanceof InventoryError) return res.status(error.status).json({ message: error.message });
     res.status(500).json({ error: 'Lỗi khi xóa đơn hàng' });
   }
 });

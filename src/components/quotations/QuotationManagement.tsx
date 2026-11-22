@@ -18,7 +18,7 @@ type Props = {
   customers: Customer[];
   user: User;
   onCustomersChanged?: () => void | Promise<void>;
-  onDocumentTypeChange: (type: 'stock-issue' | 'handover') => void;
+  onDocumentTypeChange: (type: 'stock-issue' | 'receipt' | 'handover') => void;
 };
 type Draft = { form: QuoteData; requestId: string; pricesChecked: boolean };
 type Preview = { data: QuoteData; record?: SavedQuote };

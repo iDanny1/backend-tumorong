@@ -52,8 +52,8 @@ test('product router preserves catalog filtering, sorting, and generic database 
   const request = await fixture(context);
   const response = await request('/api/products?categoryId=category-1&active=false');
   assert.equal(response.status, 200);
-  assert.deepEqual(filters, [{ categoryIds: 'category-1', active: false }]);
-  assert.deepEqual(sorting, [{ isFeatured: -1, createdAt: -1 }]);
+  assert.deepEqual(filters, [{ archived: { $ne: true }, categoryIds: 'category-1', active: false }]);
+  assert.deepEqual(sorting, [{ isFeatured: -1, createdAt: -1, _id: -1 }]);
   assert.equal((await response.json())[0].name, 'Sâm Ngọc Linh');
 
   unavailable = true;

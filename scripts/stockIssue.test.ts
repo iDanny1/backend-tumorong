@@ -6,7 +6,9 @@ import mongoose from 'mongoose';
 import stockIssueRouter from '../src/routes/stockIssueRoutes.js';
 import { mockDocumentCustomers } from './helpers/documentCustomerModel.js';
 
-const sample = () => ({ ...newStockIssue('Nhân viên'), date: '2026-09-24', recipient: 'Khách mẫu', warehouseName: 'Kho quận 1', items: [{ productId: '', name: 'Rượu Sâm Ngọc Linh Atuagin Black', sku: '', unit: 'Chai', requested: 12, quantity: 12, unitPrice: 600000 }] });
+const warehouseId = 'a'.repeat(24);
+const productId = 'b'.repeat(24);
+const sample = () => ({ ...newStockIssue('Nhân viên'), date: '2026-09-24', recipient: 'Khách mẫu', warehouseId, warehouseName: 'Kho quận 1', items: [{ productId, name: 'Rượu Sâm Ngọc Linh Atuagin Black', sku: '', unit: 'Chai', requested: 12, quantity: 12, unitPrice: 600000 }] });
 
 test('matches supplied paper: 12 bottles, 10% VAT and Vietnamese words', () => {
   const data = normalizeStockIssue(sample());
@@ -64,15 +66,52 @@ test('HTTP routes validate, persist snapshots, deduplicate retries and search wi
   let failDocument = false;
   const Model = mongoose.model('StockIssue');
   const Counter = mongoose.model('StockIssueCounter');
+  const Product = mongoose.model('Product');
+  const Warehouse = mongoose.model('Warehouse');
+  const session = {};
+  let balance = { stock: 1000, warehouseStock: { [warehouseId]: 1000 } };
+  let pending = Promise.resolve();
+  // The storage fixture serializes transactions and rolls back both collections.
+  // Route validation, ledger posting and document/customer handling run unchanged.
+  context.mock.method(mongoose.connection, 'transaction', (work: Function) => {
+    const run = pending.then(async () => {
+      const previous = structuredClone(balance), previousLength = records.length;
+      try { return await work(session); }
+      catch (error) { balance = previous; records.length = previousLength; throw error; }
+    });
+    pending = run.then(() => {}, () => {});
+    return run;
+  });
+  context.mock.method(Warehouse, 'updateOne', async (query: any, _change: any, options: any) => {
+    assert.equal(options.session, session);
+    return { matchedCount: Number(query._id === warehouseId) };
+  });
+  context.mock.method(Product, 'findById', (id: string, _fields: any, options: any) => ({ lean: async () => {
+    assert.equal(options.session, session);
+    return id === productId ? { name: 'Hàng mẫu', ...structuredClone(balance) } : null;
+  } }));
+  context.mock.method(Product, 'updateOne', async (_query: any, change: any, options: any) => {
+    assert.equal(options.session, session);
+    balance = change.$set;
+    return { matchedCount: 1 };
+  });
   context.mock.method(Model, 'init', async () => Model);
   context.mock.method(Counter, 'init', async () => Counter);
   context.mock.method(Model, 'findOne', (query: any) => ({ lean: async () => records.find(row => row.requestId === query.requestId) || null }));
+  context.mock.method(Model, 'findById', (id: string, _fields: any, options: any) => ({ lean: async () => {
+    assert.equal(options.session, session);
+    return records.find(row => row._id === id) || null;
+  } }));
   context.mock.method(Counter, 'findOneAndUpdate', async () => ({ value: ++sequence }));
-  context.mock.method(Model, 'create', async (entry: any) => {
+  context.mock.method(Model, 'create', async ([entry]: any[], options: any) => {
+    assert.equal(options.session, session);
     if (failDocument) throw new Error('Paper database unavailable');
     if (records.some(row => row.requestId === entry.requestId)) throw Object.assign(new Error('Duplicate'), { code: 11000 });
-    const doc = { ...entry, _id: String(records.length + 1), createdAt: new Date().toISOString() };
-    records.push(doc); return doc;
+    if (entry.data.sourceIssueId && records.some(row => row.data.sourceIssueId === entry.data.sourceIssueId)) {
+      throw Object.assign(new Error('Duplicate handover'), { code: 11000, keyPattern: { 'data.sourceIssueId': 1 } });
+    }
+    const doc = { ...entry, _id: new mongoose.Types.ObjectId().toString(), createdAt: new Date().toISOString() };
+    records.push(doc); return [doc];
   });
   context.mock.method(Model, 'find', (filter: any) => ({ sort: () => ({ limit: () => ({ lean: async () => {
     if (!filter.$or) return records;
@@ -92,12 +131,15 @@ test('HTTP routes validate, persist snapshots, deduplicate retries and search wi
   assert.equal(response.status, 201);
   const first: any = await response.json();
   assert.equal(first.number, 'PXK20260924-0001');
+  assert.equal(first.inventoryStatus, 'posted');
+  assert.equal(balance.stock, 988);
   assert.equal(records[0].totals.total, 7920000);
   assert.equal(customers.records.length, 1);
   assert.equal(customers.records[0].name, payload.recipient);
   assert.equal(customers.records[0].ordersCount, 0, 'A paper does not create order statistics');
   assert.equal(customers.records[0].totalSpent, 0);
   assert.equal((await post(payload)).status, 200);
+  assert.equal(balance.stock, 988, 'Retry never deducts again');
   assert.equal(records.length, 1);
   assert.equal(customers.records.length, 1, 'Retrying the same paper does not duplicate its customer');
   assert.equal((await post({ ...payload, recipient: 'Khách khác' })).status, 409);
@@ -106,6 +148,7 @@ test('HTTP routes validate, persist snapshots, deduplicate retries and search wi
   const concurrent = await Promise.all([post({ ...payload, requestId: 'test-request-00000003' }), post({ ...payload, requestId: 'test-request-00000003' })]);
   assert.ok(concurrent.every(result => [200, 201].includes(result.status)));
   assert.equal(records.length, 2);
+  assert.equal(balance.stock, 976, 'Concurrent retries debit the warehouse only once');
   assert.equal(customers.records.length, 1, 'Concurrent papers for the same identity reuse its customer');
   const all: any = await (await fetch(url)).json(); assert.equal(all.length, 2);
   const literalSearch: any = await (await fetch(`${url}?q=${encodeURIComponent('.*')}`)).json();
@@ -173,4 +216,62 @@ test('HTTP routes validate, persist snapshots, deduplicate retries and search wi
   ]);
   assert.ok(separatePapers.every(response => response.status === 201));
   assert.equal(customers.records.filter(row => row.name === concurrentCustomer.recipient).length, 1, 'Separate concurrent papers create just one customer');
+
+  const beforeHandover = balance.stock;
+  const linked = { ...sample(), documentType: 'handover', requestId: 'test-linked-handover', sourceIssueId: first._id };
+  const mismatched = { ...linked, items: [{ ...linked.items[0], quantity: 1 }] };
+  assert.equal((await post(mismatched)).status, 409);
+  const handover = await post(linked);
+  assert.equal(handover.status, 201);
+  assert.equal((await handover.json()).inventoryStatus, 'linked');
+  assert.equal((await post(linked)).status, 200);
+  assert.equal((await post({ ...linked, requestId: 'test-second-handover' })).status, 409);
+  assert.equal(balance.stock, beforeHandover);
+  const standalone = await post({ ...sample(), documentType: 'handover', requestId: 'test-standalone-handover' });
+  assert.equal(standalone.status, 201);
+  assert.equal(balance.stock, beforeHandover - 12);
+
+  const receipt = { ...sample(), documentType: 'receipt', recipient: 'Nhà cung cấp', requestId: 'test-receipt-posting' };
+  const received = await post(receipt);
+  assert.equal(received.status, 201);
+  assert.match((await received.json()).number, /^PNK/);
+  assert.equal((await post(receipt)).status, 200);
+  assert.equal(balance.stock, beforeHandover);
+  assert.equal(balance.warehouseStock[warehouseId], beforeHandover);
+  assert.equal(customers.records.some(row => row.name === receipt.recipient), false);
+
+  const beforeRejected = records.length;
+  const firstLine = payload.items[0];
+  for (const [change, status] of [
+    [{ warehouseId: '' }, 400],
+    [{ items: [{ ...firstLine, productId: '' }] }, 400],
+    [{ items: [firstLine, { ...firstLine, productId: 'c'.repeat(24) }] }, 404],
+    [{ items: [{ ...firstLine, requested: 2000, quantity: 2000 }] }, 409],
+  ] as const) {
+    assert.equal((await post({ ...sample(), ...change, requestId: 'test-invalid-stock-doc' })).status, status);
+    assert.equal(records.length, beforeRejected);
+    assert.equal(balance.stock, beforeHandover);
+  }
+  const legacy = { ...sample(), warehouseId: '', items: [{ ...firstLine, productId: '' }] };
+  records.push({ requestId: 'test-historical-paper', number: 'OLD', data: normalizeStockIssue(legacy), _id: new mongoose.Types.ObjectId().toString() });
+  const reprint = await post({ ...legacy, requestId: 'test-historical-paper' });
+  assert.equal(reprint.status, 200);
+  assert.equal((await reprint.json()).inventoryStatus, 'legacy');
+  assert.equal(balance.stock, beforeHandover);
+
+  const deductedOrder = { stockDeducted: true, inventoryDocumentRequestId: '',
+    inventoryAllocations: [{ warehouseId, productId, quantity: 12 }], save: async (options: any) => assert.equal(options.session, session) };
+  context.mock.method(mongoose.model('Order'), 'findOne', async (filter: any, _fields: any, options: any) => {
+    assert.equal(options.session, session);
+    return filter.orderCode === 'DH123' ? deductedOrder : null;
+  });
+  const orderIssue = { ...sample(), sourceOrderId: 'DH123', requestId: 'test-order-linked-issue' };
+  assert.equal((await post({ ...orderIssue, items: [{ ...firstLine, quantity: 1 }] })).status, 409);
+  const shipment = await post(orderIssue);
+  assert.equal(shipment.status, 201);
+  const orderPaper = await shipment.json();
+  assert.equal(orderPaper.inventoryStatus, 'linked');
+  assert.equal((await post({ ...orderIssue, requestId: 'test-other-order-issue' })).status, 409);
+  assert.equal((await post({ ...linked, sourceIssueId: orderPaper._id, requestId: 'test-order-linked-handover' })).status, 201);
+  assert.equal(balance.stock, beforeHandover, 'An already deducted order can have one issue and one associated handover without another debit');
 });

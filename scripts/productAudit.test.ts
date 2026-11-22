@@ -7,7 +7,10 @@ import { Product } from '../src/models/Product.js';
 import { Order } from '../src/models/Order.js';
 import productRouter from '../src/routes/productRoutes.js';
 import spreadsheetRouter from '../src/routes/spreadsheetRoutes.js';
-import { syncOrderInventory } from '../src/services/orderInventory.js';
+import { updateOrder, linkDeductedOrder } from '../src/services/orderInventory.js';
+import { applyWarehouseMovement, inventoryTransaction } from '../src/services/inventory.js';
+import { Warehouse } from '../src/models/Warehouse.js';
+import mongoose from 'mongoose';
 import { routeRoles } from '../src/security/admin.js';
 
 function handlers(context: TestContext, model: Record<string, any>) {
@@ -44,57 +47,101 @@ test('editor fields survive schema serialization', () => {
   assert.deepEqual(Object.fromEntries(Object.keys(fields).map(key => [key, stored[key]])), fields);
 });
 
-test('Excel import preserves zero stock', async context => {
-  const wb = xlsx.utils.book_new();
-  xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet([{ 'Tên': 'Audit zero', 'Giá': 10, 'Tồn kho': 0 }]), 'Products');
-  const rows: any[] = [];
-  const call = handlers(context, { create: async (row: any) => rows.push(row) });
-  const response = await call('post /api/products/import', { file: { buffer: xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' }) } });
-  assert.equal(response.status, 200);
-  assert.equal(rows[0].stock, 0);
-});
-
 test('sales product updates cannot write warehouse inventory', async context => {
   assert.ok(routeRoles('PUT', '/api/products/p').includes('sales'));
-  let written: any;
-  await handlers(context, { findByIdAndUpdate: async (_id: string, change: any) => { written = change.$set; } })('put /api/products/:id', {
+  const response = await handlers(context, { findOneAndUpdate: async () => assert.fail('unexpected catalog write') })('put /api/products/:id', {
     adminUser: { role: 'sales' }, body: { name: 'Audit', stock: 999, warehouseStock: { warehouseA: 999 } },
   });
-  assert.equal(written?.stock, undefined);
-  assert.equal(written?.warehouseStock, undefined);
+  assert.equal(response.status, 400);
 });
 
 test('updating a nonexistent product returns 404', async context => {
-  const result = await handlers(context, { findByIdAndUpdate: async () => null })('put /api/products/:id', { body: { name: 'Audit' } });
+  const result = await handlers(context, { findOneAndUpdate: async () => null })('put /api/products/:id', { body: { name: 'Audit' } });
   assert.equal(result.status, 404);
 });
 
-function inventory(context: TestContext, initialStock: number) {
-  let stock = initialStock;
-  context.mock.method(Product, 'findById', async () => ({ stock }) as any);
-  context.mock.method(Product, 'findByIdAndUpdate', async (_id: string, change: any) => { stock = change.$set.stock; });
-  context.mock.method(Order, 'findByIdAndUpdate', async () => {});
-  context.mock.method(console, 'log', () => {});
-  context.mock.method(console, 'error', () => {});
-  return { sync: syncOrderInventory, stock: () => stock };
+const productId = '507f1f77bcf86cd799439011';
+const khoA = '507f1f77bcf86cd799439012';
+const khoB = '507f1f77bcf86cd799439013';
+
+// This double models commit/rollback, not Mongo's retry implementation. Each route still
+// runs the actual allocation, availability, document-link and transition logic.
+function inventory(context: TestContext, stock: number, warehouseStock: Record<string, number>, qty: number) {
+  const initialOrder = { items: [{ id: productId, quantity: qty }], status: 'pending', stockDeducted: false };
+  let committed = { product: { stock, warehouseStock, name: 'Sản phẩm A' }, orders: { DH1: initialOrder, DH2: initialOrder } };
+  let queue = Promise.resolve();
+  context.mock.method(mongoose.connection, 'transaction', ((work: any) => {
+    const run = queue.then(async () => {
+      const tx = structuredClone(committed);
+      const result = await work(tx);
+      committed = tx;
+      return result;
+    });
+    queue = run.catch(() => {});
+    return run;
+  }) as any);
+  context.mock.method(Warehouse, 'find', (() => ({ lean: async () => [{ _id: khoA }, { _id: khoB }] })) as any);
+  context.mock.method(Warehouse, 'updateOne', (async (filter: any) => ({ matchedCount: Number([khoA, khoB].includes(filter._id)) })) as any);
+  context.mock.method(Product, 'findById', ((id: string, _fields: string, { session }: any) => ({
+    lean: async () => id === productId ? structuredClone(session.product) : null,
+  })) as any);
+  context.mock.method(Product, 'updateOne', (async (_filter: any, { $set }: any, { session }: any) => {
+    Object.assign(session.product, $set);
+  }) as any);
+  context.mock.method(Order, 'findOne', (async ({ orderCode }: any, _fields: any, { session }: any) => {
+    const row = session.orders[orderCode];
+    if (!row) return null;
+    return { ...structuredClone(row),
+      set(changes: any) { Object.assign(this, changes); },
+      save() { const { save, set, ...record } = this; session.orders[orderCode] = record; },
+    };
+  }) as any);
+  return { state: () => committed, status: (status: string, id = 'DH1') => updateOrder(id, { status }) };
 }
-const order = (id: string, quantity: number) => ({ _id: id, items: [{ id: 'product-a', quantity }], stockDeducted: false });
 
-test('confirm and cancel a fully stocked order restores initial stock', async context => {
-  const f = inventory(context, 10), doc = order('a', 3);
-  await f.sync(doc, 'confirmed'); assert.equal(f.stock(), 7);
-  await f.sync(doc, 'cancelled'); assert.equal(f.stock(), 10);
+test('confirm/cancel restores the exact split across two warehouses and legacy unallocated stock', async context => {
+  const f = inventory(context, 10, { [khoA]: 2, [khoB]: 3 }, 7);
+  await f.status('confirmed');
+  assert.deepEqual(f.state().product, { stock: 3, warehouseStock: { [khoA]: 0, [khoB]: 0 }, name: 'Sản phẩm A' });
+  await f.status('shipping');
+  await f.status('cancelled');
+  await f.status('cancelled');
+  assert.deepEqual(f.state().product, { stock: 10, warehouseStock: { [khoA]: 2, [khoB]: 3 }, name: 'Sản phẩm A' });
 });
 
-test('cancel after an insufficient-stock confirmation never creates inventory', async context => {
-  const f = inventory(context, 2), doc = order('a', 5);
-  await f.sync(doc, 'confirmed');
-  await f.sync(doc, 'cancelled');
-  assert.equal(f.stock(), 2);
+test('insufficient stock aborts confirmation and subsequent cancellation never creates inventory', async context => {
+  const f = inventory(context, 2, {}, 5);
+  await assert.rejects(f.status('confirmed'), /thiếu/);
+  assert.equal(f.state().orders.DH1.status, 'pending');
+  await f.status('cancelled');
+  assert.equal(f.state().product.stock, 2);
 });
 
-test('concurrent confirmations deduct both orders', async context => {
-  const f = inventory(context, 10);
-  await Promise.all([f.sync(order('a', 3), 'confirmed'), f.sync(order('b', 3), 'confirmed')]);
-  assert.equal(f.stock(), 4);
+test('concurrent confirmations deduct both orders and a repeated confirmation is idempotent', async context => {
+  const f = inventory(context, 10, { [khoA]: 10 }, 3);
+  await Promise.all([f.status('confirmed', 'DH1'), f.status('confirmed', 'DH2')]);
+  await f.status('confirmed', 'DH1');
+  assert.equal(f.state().product.stock, 4);
+  assert.equal(f.state().product.warehouseStock[khoA], 4);
+});
+
+test('a warehouse never spends unallocated stock and receipts preserve that balance', async context => {
+  const f = inventory(context, 8, { [khoA]: 1 }, 1);
+  const move = (n: number, direction: 'in'|'out') => inventoryTransaction(session => applyWarehouseMovement(session, khoA, [{ productId, quantity: n }], direction));
+  await assert.rejects(move(2, 'out'), /chỉ còn 1/);
+  await move(0.3, 'in'); await move(0.1, 'out'); await move(0.2, 'out');
+  assert.equal(f.state().product.stock, 8);
+  assert.equal(f.state().product.warehouseStock[khoA], 1);
+});
+
+test('a linked warehouse document matches the deducted order and cannot double-consume or return the shipment', async context => {
+  const f = inventory(context, 5, { [khoA]: 5 }, 2);
+  await f.status('confirmed');
+  const link = (quantity: number, id: string) => inventoryTransaction(session =>
+    linkDeductedOrder(session, 'DH1', khoA, [{ productId, quantity }], id));
+  await assert.rejects(link(1, 'paper-a'), /phải khớp/);
+  await link(2, 'paper-a');
+  await assert.rejects(link(2, 'paper-b'), /chứng từ kho khác/);
+  await assert.rejects(f.status('cancelled'), /phiếu nhập/);
+  assert.equal(f.state().product.stock, 3);
 });

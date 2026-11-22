@@ -1,287 +1,83 @@
-import { apiFetch } from '../../lib/api';
-import React, { useState } from 'react';
-import { Plus, Pencil, RotateCcw, Filter, Trash2, Search, Download, Upload } from 'lucide-react';
-import { Product } from '../../types';
+import { useEffect, useRef, useState } from 'react';
+import { api, apiFetch } from '../../lib/api';
+import type { Product, Warehouse } from '../../types';
 
-interface ProductManagementProps {
-  products: Product[];
-  searchQuery: string;
-  onAddProduct: () => void;
-  onEditProduct: (product: Product) => void;
-  onDeleteProduct: (id: string) => void;
-  onRefresh: () => void;
-}
-
-export const ProductManagement: React.FC<ProductManagementProps> = ({
-  products,
-  searchQuery,
-  onAddProduct,
-  onEditProduct,
-  onDeleteProduct,
-  onRefresh
-}) => {
-  const [localSearch, setLocalSearch] = useState('');
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
-
-  const handleExport = async () => {
-    try {
-      const response = await apiFetch('/api/products/export');
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'products.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } catch (error) {
-      alert('Lỗi khi xuất file Excel');
-    }
-  };
-
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const formData = new FormData();
-    formData.append('file', file);
-    try {
-      const response = await apiFetch('/api/products/import', {
-        method: 'POST',
-        body: formData
-      });
-      const data = await response.json();
-      alert(data.message || 'Nhập thành công');
-      if (onRefresh) onRefresh();
-    } catch (error) {
-      alert('Lỗi khi nhập file Excel');
-    }
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const filteredProducts = products.filter(product => {
-    const searchStr = (searchQuery || localSearch).toLowerCase();
-    return (
-      product.name.toLowerCase().includes(searchStr) ||
-      product._id.toLowerCase().includes(searchStr) ||
-      (product.sku && product.sku.toLowerCase().includes(searchStr))
-    );
-  });
-
-  return (
-    <>
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <nav className="flex items-center gap-2 text-xs text-slate-400 mb-1">
-            <span>Quản lý sản phẩm</span>
-            <span>/</span>
-            <span className="text-slate-600">Sản phẩm</span>
-          </nav>
-          <h1 className="text-2xl font-bold text-slate-800">Quản lý sản phẩm</h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <button 
-            className="p-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-all"
-            title="Lọc"
-          >
-            <Filter className="w-5 h-5" />
-          </button>
-          <button 
-            onClick={onRefresh}
-            className="p-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-all"
-            title="Làm mới"
-          >
-            <RotateCcw className="w-5 h-5" />
-          </button>
-          <input 
-            type="file" 
-            accept=".xlsx, .xls" 
-            className="hidden" 
-            ref={fileInputRef}
-            onChange={handleImport}
-          />
-          <button 
-            onClick={handleExport}
-            className="flex items-center gap-2 px-3 py-2 bg-white border border-blue-200 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors shadow-sm"
-          >
-            <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Xuất Excel</span>
-          </button>
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 px-3 py-2 bg-white border border-blue-200 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors shadow-sm"
-          >
-            <Upload className="w-4 h-4" />
-            <span className="hidden sm:inline">Nhập Excel</span>
-          </button>
-          <button 
-            onClick={onAddProduct}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-900 text-white rounded-lg text-sm font-bold hover:bg-emerald-950 transition-all shadow-lg shadow-emerald-900/10"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">Thêm sản phẩm</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-        <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/30">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input 
-              type="text"
-              placeholder="Tìm kiếm theo tên, SKU hoặc ID..."
-              className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-              value={localSearch}
-              onChange={(e) => setLocalSearch(e.target.value)}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 font-medium">Hiển thị {filteredProducts.length} sản phẩm</span>
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[1000px]">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="p-4 w-10">
-                  <input type="checkbox" className="rounded border-slate-300" />
-                </th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">ID / SKU</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Hình ảnh</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Tên sản phẩm</th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  <div className="flex items-center gap-1">
-                    Danh mục <Filter className="w-3 h-3" />
-                  </div>
-                </th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  <div className="flex items-center gap-1">
-                    Giá <Filter className="w-3 h-3" />
-                  </div>
-                </th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  <div className="flex items-center gap-1">
-                    Tồn kho <Filter className="w-3 h-3" />
-                  </div>
-                </th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  <div className="flex items-center gap-1 text-nowrap">
-                    Trạng thái <Filter className="w-3 h-3" />
-                  </div>
-                </th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  <div className="flex items-center gap-1 text-nowrap">
-                    Loại sản phẩm <Filter className="w-3 h-3" />
-                  </div>
-                </th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  <div className="flex items-center gap-1">
-                    Nền tảng <Filter className="w-3 h-3" />
-                  </div>
-                </th>
-                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Hành động</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredProducts.map((product, idx) => (
-                <tr key={idx} className="hover:bg-slate-50 transition-colors group">
-                  <td className="p-4">
-                    <input type="checkbox" className="rounded border-slate-300" />
-                  </td>
-                  <td className="p-4">
-                    <div className="text-xs font-mono text-slate-400">#{product._id.slice(-6).toUpperCase()}</div>
-                    {product.sku && <div className="text-10 text-slate-500 mt-0.5">{product.sku}</div>}
-                  </td>
-                  <td className="p-4">
-                    <div className="w-16 h-16 rounded-lg overflow-hidden border border-slate-100 relative group/img">
-                      <img 
-                        src={product.images?.[0] || 'https://picsum.photos/seed/placeholder/100/100'} 
-                        alt={product.name} 
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
-                        <span className="text-10 text-white font-bold">Xem t...</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex flex-col gap-1">
-                      <div className="text-sm font-medium text-slate-700 max-w-[200px]">{product.name}</div>
-                      {product.isFeatured && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-9 font-bold bg-amber-100 text-amber-700 border border-amber-200 uppercase w-fit">
-                          Nêu bật
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex flex-wrap gap-1">
-                      {product.categoryNames?.map((name, i) => (
-                        <span key={i} className="inline-block px-2 py-0.5 bg-slate-500 text-white text-9 font-bold rounded uppercase tracking-tight">
-                          {name}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex items-center gap-2 text-sm text-slate-700">
-                      {typeof product.price === 'number' ? `${product.price.toLocaleString()}đ` : (product.price || 'Liên hệ')}
-                      <button 
-                        onClick={() => onEditProduct(product)}
-                        className="p-1 hover:bg-slate-100 rounded text-emerald-600 transition-colors"
-                        title="Sửa giá"
-                      >
-                        <Pencil className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex items-center gap-2 text-sm text-slate-700">
-                      <span className="font-semibold text-slate-800">{typeof product.stock === 'number' ? product.stock : 0}</span>
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    {product.active !== false ? (
-                      <span className="px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded text-10 font-bold">
-                        Bật
-                      </span>
-                    ) : (
-                      <span className="px-2 py-1 bg-slate-100 text-slate-500 border border-slate-200 rounded text-10 font-bold">
-                        Tắt
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm text-slate-600">{product.type || 'Vật lý'}</span>
-                  </td>
-                  <td className="p-4">
-                    <span className="text-sm text-slate-600">{product.platform || 'Mini App'}</span>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex flex-col gap-2">
-                      <button 
-                        onClick={() => onEditProduct(product)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg border border-emerald-100 hover:bg-emerald-100 transition-all text-11 font-bold"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                        CHỈNH SỬA
-                      </button>
-                      <button 
-                        onClick={() => onDeleteProduct(product._id)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 rounded-lg border border-red-100 hover:bg-red-100 transition-all text-11 font-bold"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        XÓA
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </>
-  );
+type Props = {
+  products: Product[]; role: string; searchQuery: string;
+  onAddProduct: () => void; onEditProduct: (product: Product) => void;
+  onDeleteProduct: (id: string) => void; onRefresh: () => void;
 };
+const action = 'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50';
+const number = (value: number) => (value || 0).toLocaleString('vi-VN');
+
+export function ProductManagement({ products, role, searchQuery, onAddProduct, onEditProduct, onDeleteProduct, onRefresh }: Props) {
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('');
+  const [page, setPage] = useState(1);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    let active = true;
+    api.get('/api/warehouses').then(rows => { if (active) setWarehouses(rows); }).catch(() => { if (active) setNotice('Chưa tải được tên các kho.'); });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => { setPage(1); }, [search, searchQuery, status]);
+  const canEdit = ['sales', 'admin'].includes(role);
+  const filtered = products.filter(p => {
+    const fields = [p.name, p.sku, p.barcode, p._id].join(' ').toLowerCase();
+    return [search, searchQuery].every(q => fields.includes(q.trim().toLowerCase())) &&
+      (!status || (p.active !== false) === (status === 'visible'));
+  });
+  const pages = Math.max(1, Math.ceil(filtered.length / 40));
+  const current = Math.min(page, pages);
+  const excel = async (file?: File) => {
+    setBusy(true); setNotice('');
+    try {
+      if (file) {
+        const form = new FormData();
+        form.append('file', file);
+        const response = await apiFetch('/api/products/import', { method: 'POST', body: form });
+        setNotice((await response.json()).message || 'Đã nhập danh mục sản phẩm.');
+        onRefresh();
+      } else {
+        const response = await apiFetch('/api/products/export');
+        const url = URL.createObjectURL(await response.blob());
+        const a = document.createElement('a');
+        a.href = url; a.download = 'products.xlsx'; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Chưa xử lý được tệp Excel.'); }
+    finally { setBusy(false); if (input.current) input.current.value = ''; }
+  };
+  return <section className="space-y-4">
+    <header className="flex flex-wrap items-center justify-between gap-3"><h1 className="text-2xl font-bold text-slate-800">Quản lý sản phẩm</h1>
+      <div className="flex flex-wrap gap-2">
+        <button className={action} onClick={onRefresh}>Làm mới</button>
+        {role === 'admin' && <><input hidden type="file" accept=".xls,.xlsx" ref={input} onChange={e => { const file = e.target.files?.[0]; if (file) void excel(file); }} />
+          <button className={action} disabled={busy} onClick={() => input.current?.click()}>Nhập danh mục Excel</button>
+          <button className={action} disabled={busy} onClick={() => void excel()}>Xuất Excel</button></>}
+        {canEdit && <button className="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-bold text-white" onClick={onAddProduct}>Thêm sản phẩm</button>}
+      </div></header>
+    {notice && <p role="status" className="rounded-lg bg-slate-100 p-3">{notice}</p>}
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-center gap-3 border-b p-4"><input className={action} aria-label="Tìm sản phẩm" placeholder="Tên, mã SKU, mã vạch hoặc ID" value={search} onChange={e => setSearch(e.target.value)} />
+        <select aria-label="Trạng thái hiển thị" className={action} value={status} onChange={e => setStatus(e.target.value)}><option value="">Mọi trạng thái</option><option value="visible">Đang hiển thị</option><option value="hidden">Đang ẩn</option></select>
+        <span className="text-sm text-slate-500">{filtered.length} sản phẩm</span></div>
+      <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-slate-50 text-slate-600"><tr>
+        {['Sản phẩm', 'Danh mục', 'Giá bán', 'Tồn kho', 'Hiển thị', ...(canEdit ? ['Thao tác'] : [])].map(s => <th key={s} className="px-4 py-3">{s}</th>)}
+      </tr></thead><tbody className="divide-y divide-slate-100">{filtered.slice((current - 1) * 40, current * 40).map(p => {
+        const balances = Object.entries(p.warehouseStock || {});
+        const unassigned = (p.stock || 0) - balances.reduce((sum, [, quantity]) => sum + quantity, 0);
+        return <tr key={p._id}><td className="p-4"><div className="flex items-center gap-3">{p.images?.[0] && <img className="h-10 w-10 rounded object-cover" src={p.images[0]} alt="" />}<div><strong>{p.name || 'Chưa có tên'}</strong>{p.isFeatured && <span className="ml-1 text-amber-700" title="Sản phẩm nổi bật">★</span>}<small className="block text-slate-500">{p.sku || p.barcode || p._id}</small></div></div></td>
+          <td className="p-4">{p.categoryNames?.join(', ')}</td><td className="p-4">{number(p.price)} đ</td>
+          <td className="p-4"><details><summary className="cursor-pointer">{number(p.stock)} {p.unit}</summary>{balances.map(([id, quantity]) => <div key={id}>{warehouses.find(w => w._id === id)?.name || id} · {number(quantity)}</div>)}{unassigned > 0 && <div>Chưa phân kho · {number(unassigned)}</div>}{!balances.length && !unassigned && <div>Chưa có hàng trong kho.</div>}</details></td>
+          <td className="p-4">{p.active === false ? 'Đang ẩn' : 'Đang hiển thị'}</td>
+          {canEdit && <td className="p-4"><div className="flex gap-2"><button className={action} onClick={() => onEditProduct(p)}>Sửa</button><button className={action} onClick={() => onDeleteProduct(p._id)}>Ngừng kinh doanh</button></div></td>}</tr>;
+      })}</tbody></table></div>
+      {filtered.length === 0 && <p className="p-4 text-slate-500">Không có sản phẩm phù hợp.</p>}
+      {pages > 1 && <nav aria-label="Trang sản phẩm" className="flex items-center gap-3 p-4"><button className={action} disabled={current <= 1} onClick={() => setPage(current - 1)}>Trang trước</button> {current} / {pages} <button className={action} disabled={current >= pages} onClick={() => setPage(current + 1)}>Trang sau</button></nav>}
+    </div>
+  </section>;
+}
