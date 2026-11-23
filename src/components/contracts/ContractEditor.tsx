@@ -458,7 +458,7 @@ export function ContractEditor({
     const label = <strong className="contract-clause-number">{number}. </strong>;
     const heading = title
       ? <h3>{label}{title}</h3>
-      : <p>{label}{resolve(body.shift() ?? '')}</p>;
+      : <p className="contract-prose">{label}{resolve(body.shift() ?? '')}</p>;
     const blockClass = isMinor ? 'contract-subclause' : 'contract-article';
     const handleMenu = (event: MouseEvent) => openContextMenu(event, target);
     add(<section className={blockClass + ' contract-block'} onContextMenu={handleMenu}>
@@ -482,7 +482,7 @@ export function ContractEditor({
     addClause({articleId: article.id}, 'Điều ' + (i + 1), article);
     article.children.forEach((clause, j) => addClause({articleId: article.id, clauseId: clause.id}, (i + 1) + '.' + (j + 1), clause));
   });
-  template.closing.forEach(line => add(<p>{resolve(line)}</p>));
+  template.closing.forEach(line => add(<p className="contract-prose">{resolve(line)}</p>));
   add(<SignatureLines rows={[
     ['ĐẠI DIỆN BÊN A', 'ĐẠI DIỆN BÊN B'],
     ['(Ký, ghi rõ họ tên và đóng dấu)', '(Ký, ghi rõ họ tên và đóng dấu)'],

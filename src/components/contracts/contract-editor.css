@@ -489,26 +489,27 @@
   line-height: 1.35;
 }
 .contract-paper .contract-intro-line { padding-top: 5pt; }
-.contract-paper :is(.contract-intro-line, .contract-party-detail, .contract-party-intro) {
-  text-indent: 6mm;
+.contract-paper :is(.contract-intro-line, .contract-party-detail, .contract-party-intro, .contract-prose) {
+  text-indent: 10mm;
 }
 .contract-unit { --clause-indent: 6mm; --number-width: 12mm; }
 .contract-unit .contract-article { margin: 8pt 0 3pt; }
 .contract-unit .contract-subclause { margin: 3pt 0 3pt var(--clause-indent); }
-.contract-subclause .contract-block-heading > :is(h3, p) { padding-inline-start: var(--number-width); }
-.contract-subclause .contract-clause-number {
+.contract-subclause .contract-block-heading > h3 { padding-inline-start: var(--number-width); }
+.contract-subclause h3 > .contract-clause-number {
   float: left;
   margin-inline-start: calc(-1 * var(--number-width));
   white-space: nowrap;
 }
 .contract-subclause p, .contract-body-line p { text-align: justify; }
-.contract-minor-body { padding-inline-start: calc(var(--clause-indent) + var(--number-width)); }
-.contract-body-line .contract-prose { text-indent: 6mm; }
+.contract-minor-body { padding-inline-start: var(--clause-indent); }
 .contract-body-line .contract-list-point {
   margin-inline-start: 4mm;
   padding-inline-start: 6mm;
 }
 .contract-body-line .contract-nested-point { margin-inline-start: 10mm; }
+.contract-minor-body .contract-list-point { margin-inline-start: calc(var(--number-width) + 4mm); }
+.contract-minor-body .contract-nested-point { margin-inline-start: calc(var(--number-width) + 10mm); }
 .contract-point-marker { float: left; margin-inline-start: -6mm; }
 .contract-unit .contract-block-heading { display: block; position: relative; }
 .contract-unit .contract-block-button {
