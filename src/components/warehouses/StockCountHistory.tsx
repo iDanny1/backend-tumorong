@@ -14,6 +14,28 @@ export function StockCountHistory({ onRecount }: { onRecount: (row: StockCountRe
   const [refresh, setRefresh] = useState(0);
   const [sending, setSending] = useState(false);
   const [mailMessage, setMailMessage] = useState('');
+  const [testStatus, setTestStatus] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    let current = true;
+    api.get('/api/auth/me').then(user => { if (current) setIsAdmin(user.role === 'admin'); }).catch(() => {});
+    return () => { current = false; };
+  }, []);
+
+  async function testMail() {
+    if (sending) return;
+    setSending(true);
+    setTestStatus('');
+    try {
+      const { status } = await api.post('/api/stock-counts/report/test-email');
+      setTestStatus(status === 'sent' ? 'Google đã nhận yêu cầu gửi đến it@tumorong.com. Kiểm tra hộp thư IT để xác nhận nhận thư.'
+        : status === 'failed' ? 'Gửi thử thất bại. Cần kiểm tra cấu hình Google hoặc Python trên máy chủ.'
+        : 'Chưa xác định kết quả. Kiểm tra hộp thư IT trước khi thử lại.');
+    } catch (err) {
+      setTestStatus(err instanceof Error ? err.message : 'Chưa gửi được thư thử.');
+    } finally { setSending(false); }
+  }
 
   async function send() {
     if (!rows.length || sending) return;
@@ -43,6 +65,12 @@ export function StockCountHistory({ onRecount }: { onRecount: (row: StockCountRe
   }, [day, refresh]);
 
   return <section className="space-y-4">
+    {isAdmin && <div className="space-y-2">
+      <button type="button" disabled={sending} onClick={testMail} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">
+        {sending ? 'Đang xử lý…' : 'Gửi thư thử đến it@tumorong.com'}
+      </button>
+      {testStatus && <p role="status" className="text-sm">{testStatus}</p>}
+    </div>}
     <div className="flex flex-wrap items-end gap-3">
       <label className="grid gap-1 text-sm font-semibold">Ngày kiểm kê
         <input type="date" value={day} disabled={sending} max={stockCountDay()} onChange={e => { setLoading(true); setMailMessage(''); setDay(e.target.value); }}

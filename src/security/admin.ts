@@ -30,6 +30,7 @@ export function routeRoles(method: string, path: string): string[] | 'public' | 
   path = path.replace(/\/+$/, '') || '/';
   if (['/api/health', '/api/auth/csrf', '/api/login', '/api/auth/logout'].includes(path)) return 'public';
   if (path === '/api/auth/me') return everybody;
+  if (path === '/api/stock-counts/report/test-email' && method === 'POST') return ['admin'];
   if (path === '/api/stock-counts' && ['GET', 'HEAD', 'POST'].includes(method)) return ['admin', 'warehouse'];
   if (path === '/api/stock-counts/report' && ['GET', 'HEAD'].includes(method)) return ['admin', 'warehouse'];
   if (path === '/api/stock-counts/report/email' && method === 'POST') return ['admin', 'warehouse'];

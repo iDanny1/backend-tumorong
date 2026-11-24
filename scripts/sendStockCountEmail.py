@@ -22,6 +22,15 @@ def message_for(report):
     mail["Date"] = formatdate(localtime=False)
     sender_domain = report["sender"].rsplit("@", 1)[1]
     mail["Message-ID"] = f"<{report['deliveryId']}@{sender_domain}>"
+    if report.get("test"):
+        mail.replace_header("Subject", "[Thử nghiệm] Kiểm tra gửi mail từ miniapp.tumorong.com")
+        mail.set_content(
+            "Đây là thư thử nghiệm gửi tự động từ miniapp.tumorong.com qua Gmail API.\n\n"
+            f"Hộp thư gửi: {report['sender']}\n"
+            f"Thời điểm gửi thử: {report['checkedTime']} ngày {display_day}\n\n"
+            "Bộ phận IT vui lòng xác nhận đã nhận được thư."
+        )
+        return mail
     mail.set_content(
         "Chào anh/chị,\n\n"
         "Đây là thư tự động gửi từ miniapp.tumorong.com. Hệ thống gửi kèm báo cáo kiểm kho để anh/chị theo dõi và đối chiếu.\n\n"

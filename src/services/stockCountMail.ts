@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import mongoose, { Schema } from 'mongoose';
-import { stockChecker, stockReportCc, stockReportRecipients, stockReportSender, stockReportTime } from '../lib/stockCount.js';
+import { stockChecker, stockCountDay, stockReportCc, stockReportRecipients, stockReportSender, stockReportTime } from '../lib/stockCount.js';
 import { dailyStockCountRows, stockCountWorkbook } from './stockCountReport.js';
 
 const Delivery = mongoose.model('StockCountMailDelivery', new Schema({
@@ -14,6 +14,7 @@ const mailScript = fileURLToPath(new URL('../../scripts/sendStockCountEmail.py',
 interface MailPayload {
   day: string; sender: string; to: readonly string[]; cc: readonly string[];
   deliveryId: string; checkedTime: string; checkers: string[]; xlsx: string;
+  test?: boolean;
 }
 function deliver(payload: MailPayload): Promise<Outcome> {
   return new Promise(resolve => {
@@ -35,6 +36,15 @@ function deliver(payload: MailPayload): Promise<Outcome> {
 
 export class StockReportMailError extends Error {
   constructor(public status: number, message: string) { super(message); }
+}
+
+export async function sendStockCountTest() {
+  if (!process.env.STOCK_REPORT_GOOGLE_CLIENT_ID || !process.env.STOCK_REPORT_GOOGLE_CLIENT_SECRET || !process.env.STOCK_REPORT_GOOGLE_REFRESH_TOKEN) {
+    throw new StockReportMailError(503, 'Chưa cấu hình đủ ba biến Google trên máy chủ.');
+  }
+  const now = new Date();
+  return deliver({ day: stockCountDay(now), sender: stockReportSender, to: ['it@tumorong.com'], cc: [],
+    deliveryId: randomUUID(), checkedTime: stockReportTime(now), checkers: [], xlsx: '', test: true });
 }
 
 export async function sendStockCountMail(day: string, requestedBy: string, expectedCount: number, latestId: string, transport = deliver) {

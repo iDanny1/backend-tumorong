@@ -5,7 +5,7 @@ import { StockCount } from '../models/StockCount.js';
 import { Product } from '../models/Product.js';
 import { Warehouse } from '../models/Warehouse.js';
 import { dailyStockCountRows, stockCountWorkbook } from '../services/stockCountReport.js';
-import { sendStockCountMail, StockReportMailError } from '../services/stockCountMail.js';
+import { sendStockCountMail, sendStockCountTest, StockReportMailError } from '../services/stockCountMail.js';
 
 const router = Router({ caseSensitive: true });
 const objectId = z.string().regex(/^[a-f\d]{24}$/i).toLowerCase();
@@ -37,6 +37,15 @@ router.get('/report', async (req, res) => {
     res.attachment('Kiem-ke-' + day.data + '.xlsx').send(buffer);
   } catch {
     res.status(500).json({ error: 'Chưa xuất được báo cáo kiểm kê.' });
+  }
+});
+
+router.post('/report/test-email', async (_req, res) => {
+  try {
+    res.json({ status: await sendStockCountTest() });
+  } catch (err) {
+    if (err instanceof StockReportMailError) return res.status(err.status).json({ error: err.message });
+    res.status(500).json({ error: 'Chưa xác nhận được email thử.' });
   }
 });
 
