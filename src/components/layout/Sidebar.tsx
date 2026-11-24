@@ -17,9 +17,11 @@ import {
   ChevronDown,
   ChevronRight,
   Warehouse,
+  ClipboardList,
   LogOut
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { stockCountMenu } from '../../lib/stockCount';
 
 import { User } from '../../types';
 
@@ -52,6 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { icon: ShoppingCart, label: 'Đơn hàng', roles: ['admin', 'sales'] },
     { icon: BarChart3, label: 'Báo cáo', roles: ['admin'] },
     { icon: Warehouse, label: 'Quản lý kho', roles: ['admin', 'warehouse'] },
+    { icon: ClipboardList, label: stockCountMenu, roles: ['admin', 'warehouse'] },
     { 
       icon: Package, 
       label: 'Quản lý sản phẩm',

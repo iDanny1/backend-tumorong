@@ -11,6 +11,8 @@ import { OrderManagement } from './components/orders/OrderManagement';
 import { ProductManagement } from './components/products/ProductManagement';
 import { CategoryManagement } from './components/products/CategoryManagement';
 import WarehouseManagement from './components/warehouses/WarehouseManagement';
+import { StockCountForm } from './components/warehouses/StockCountForm';
+import { stockCountMenu } from './lib/stockCount';
 import { OrderDetail } from './components/orders/OrderDetail';
 import { ProductModal } from './components/products/ProductModal';
 import { CategoryModal } from './components/products/CategoryModal';
@@ -33,6 +35,7 @@ import { ContractManagement } from './components/contracts/ContractManagement';
 export default function App() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [catalogStatus, setCatalogStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('Tất cả');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -88,7 +91,7 @@ export default function App() {
     api.get('/api/auth/me').then(profile => {
       if (!mounted) return;
       setUser(profile); setIsLoggedIn(true);
-      if (profile.role === 'warehouse') setActiveMenu('Quản lý kho');
+      if (profile.role === 'warehouse') setActiveMenu(stockCountMenu);
     }).catch(() => {}).finally(() => { if (mounted) setLoading(false); });
     const expired = () => { setUser(null); setIsLoggedIn(false); };
     window.addEventListener('admin-session-expired', expired);
@@ -143,6 +146,7 @@ export default function App() {
   };
 
   const fetchProducts = async () => {
+    setCatalogStatus('loading');
     try {
       const data = await api.get('/api/products');
       // Đảm bảo sắp xếp: Nêu bật trước, sau đó đến ngày tạo mới nhất
@@ -152,7 +156,9 @@ export default function App() {
         return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
       });
       setProducts(sortedData);
+      setCatalogStatus('ready');
     } catch (err) {
+      setCatalogStatus('error');
       console.error("Error fetching products:", err);
     }
   };
@@ -167,7 +173,7 @@ export default function App() {
       setLoginForm({ username: '', password: '' });
       // Chuyển hướng theo role
       if (userData.role === 'warehouse') {
-        setActiveMenu('Quản lý kho');
+        setActiveMenu(stockCountMenu);
       } else {
         setActiveMenu('Đơn hàng');
       }
@@ -347,6 +353,9 @@ export default function App() {
 
 
   const renderContent = () => {
+    if (activeMenu === stockCountMenu && ['admin', 'warehouse'].includes(user?.role ?? '')) {
+      return <StockCountForm products={products} catalogStatus={catalogStatus} reloadCatalog={fetchProducts} />;
+    }
     if (activeMenu === 'Xuất phiếu' && user) {
       return <StockIssueManagement key={user.username} products={products} customers={customers} user={user} onCustomersChanged={fetchCustomers} onInventoryChanged={fetchProducts} warehouseDocument={warehouseDocument} orders={orders} />;
     }
@@ -538,6 +547,7 @@ export default function App() {
 
       <main className="flex-1 flex flex-col overflow-hidden w-full">
         <Header 
+          showSearch={activeMenu !== stockCountMenu}
           user={user}
           orders={orders}
           showNotifications={showNotifications}

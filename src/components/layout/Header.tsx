@@ -12,6 +12,7 @@ interface HeaderProps {
   onSelectOrder: (order: Order) => void;
   onViewAllOrders: () => void;
   searchQuery: string;
+  showSearch?: boolean;
   setSearchQuery: (query: string) => void;
   onMenuClick: () => void;
 }
@@ -25,6 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectOrder,
   onViewAllOrders,
   searchQuery,
+  showSearch = true,
   setSearchQuery,
   onMenuClick
 }) => {
@@ -38,7 +40,7 @@ export const Header: React.FC<HeaderProps> = ({
           <Menu className="w-5 h-5" />
         </button>
         
-        <div className="relative flex-1">
+        {showSearch && <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input 
             type="text" 
@@ -47,7 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-slate-100 border-none rounded-lg text-sm focus:ring-2 focus:ring-emerald-500/20 transition-all"
           />
-        </div>
+        </div>}
       </div>
 
       <div className="flex items-center gap-2 md:gap-4 ml-4">

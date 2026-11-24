@@ -30,6 +30,9 @@ export function routeRoles(method: string, path: string): string[] | 'public' | 
   path = path.replace(/\/+$/, '') || '/';
   if (['/api/health', '/api/auth/csrf', '/api/login', '/api/auth/logout'].includes(path)) return 'public';
   if (path === '/api/auth/me') return everybody;
+  if (path === '/api/stock-counts' && ['GET', 'HEAD', 'POST'].includes(method)) return ['admin', 'warehouse'];
+  if (path === '/api/stock-counts/report' && ['GET', 'HEAD'].includes(method)) return ['admin', 'warehouse'];
+  if (path === '/api/stock-counts/report/email' && method === 'POST') return ['admin', 'warehouse'];
   if (['GET', 'HEAD'].includes(method) && ['/api/products', '/api/categories', '/api/news', '/api/vouchers-v2/public'].includes(path)) return 'public';
   if (method === 'POST' && ['/api/orders', '/api/vouchers/validate', '/api/vouchers-v2/apply', '/api/zalo/phone', '/api/zalo-webhook'].includes(path)) return 'public';
   // Buyer authentication requires the companion Mini App release; these existing
@@ -46,7 +49,7 @@ export function routeRoles(method: string, path: string): string[] | 'public' | 
   if (/^\/api\/warehouses(?:\/[^/]+)?$/.test(path)) return safeMethods.has(method) ? everybody : ['admin', 'warehouse'];
   if (/^\/api\/stock-issues(?:\/[^/]+)?$/.test(path)) return safeMethods.has(method) ? everybody : ['admin', 'warehouse'];
   if (path === '/api/quotations' && ['GET', 'HEAD', 'POST'].includes(method)) return everybody;
-  if (/^\/api\/contracts(?:\/[\w-]+)?$/.test(path) && ['GET', 'HEAD', 'PUT'].includes(method)) return ['admin', 'sales'];
+  if (/^\/api\/contracts(?:\/[\w-]+)?$/.test(path) && ['GET', 'HEAD', 'PUT', 'DELETE'].includes(method)) return ['admin', 'sales'];
   if (/^\/api\/vouchers(?:\/[^/]+)?$/.test(path) || /^\/api\/vouchers-v2\/admin\//.test(path)) return ['admin', 'sales'];
   if (/^\/api\/ghn\//.test(path)) return ['admin', 'sales'];
   if (/^\/api\/download\//.test(path) || path === '/api/integrations/appsheet/status') return everybody;

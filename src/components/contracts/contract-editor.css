@@ -489,9 +489,10 @@
   line-height: 1.35;
 }
 .contract-paper .contract-intro-line { padding-top: 5pt; }
-.contract-paper :is(.contract-intro-line, .contract-party-detail, .contract-party-intro, .contract-prose) {
+.contract-paper :is(.contract-intro-line, .contract-party-intro, .contract-prose) {
   text-indent: 10mm;
 }
+.contract-paper .contract-party-detail { padding-inline-start: 10mm; }
 .contract-unit { --clause-indent: 6mm; --number-width: 12mm; }
 .contract-unit .contract-article { margin: 8pt 0 3pt; }
 .contract-unit .contract-subclause { margin: 3pt 0 3pt var(--clause-indent); }

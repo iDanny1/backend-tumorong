@@ -17,7 +17,7 @@ const groups: Array<{ key: ContractField['group']; title: string }> = [
 
 const steps = ['Chọn loại hợp đồng', 'Điền thông tin', 'Xem và chỉnh sửa'];
 interface LibraryRow {
-  _id: string; template: { name: string }; values: {contractNumber: string; partnerName: string};
+  _id: string; revision: number; template: { name: string }; values: {contractNumber: string; partnerName: string};
 }
 const primaryButton = 'inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800';
 const secondaryButton = 'inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50';
@@ -35,6 +35,8 @@ export function ContractManagement() {
   const [status, setStatus] = useState('');
   const [offset, setOffset] = useState(0);
   const [library, setLibrary] = useState<LibraryRow[]>([]);
+  const [libraryVersion, refreshLibrary] = useState(0);
+  const [deleteNotice, setDeleteNotice] = useState('');
   const [hasMore, setHasMore] = useState(false);
   const [libraryError, setLibraryError] = useState('');
   React.useEffect(() => {
@@ -47,7 +49,7 @@ export function ContractManagement() {
       if (active) { setLibrary(page.items); setHasMore(page.hasMore); }
     }).catch(() => { if (active) setLibraryError('Chưa tải được danh sách hợp đồng đã lưu.'); });
     return () => { active = false; };
-  }, [step, offset]);
+  }, [step, offset, libraryVersion]);
   const documentValues = template ? formatContractValues(template, values) : {};
 
   function goToStep(next: number) {
@@ -116,6 +118,22 @@ export function ContractManagement() {
     } finally { setBusy(false); }
   }
 
+  async function removeContract(row: LibraryRow) {
+    if (busy || !window.confirm('Xóa hợp đồng ' + row.values.contractNumber + ' của ' + row.values.partnerName + '?')) return;
+    setBusy(true);
+    setDeleteNotice('');
+    setLibraryError('');
+    try {
+      await api.delete('/api/contracts/' + row._id + '?revision=' + row.revision);
+      if (record.id === row._id) setTemplate(null);
+      if (offset && library.length === 1) setOffset(offset - 30);
+      refreshLibrary(version => version + 1);
+      setDeleteNotice('Đã xóa hợp đồng ' + row.values.contractNumber + '.');
+    } catch (error) {
+      setLibraryError(error instanceof Error ? error.message : 'Chưa xóa được hợp đồng.');
+    } finally { setBusy(false); }
+  }
+
   async function reopen(id: string) {
     setBusy(true);
     try {
@@ -176,11 +194,16 @@ export function ContractManagement() {
           {template && <button type="button" className={secondaryButton + ' mt-3'} onClick={() => selectTemplate(contractTemplates.find(t => t.id === template.id)!, true)}>Tạo hợp đồng mới cùng mẫu</button>}
           <h2 className="mt-8 mb-3 text-lg font-semibold text-slate-900">Hợp đồng đã lưu</h2>
           {libraryError && <p role="alert">{libraryError}</p>}
-          {library?.map(row => <button key={row._id} type="button" onClick={() => reopen(row._id)}
-            className="mb-2 block w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-left hover:border-emerald-600">
+          {deleteNotice && <p role="status">{deleteNotice}</p>}
+          {library?.map(row => <div key={row._id} className="mb-2 flex items-center gap-2">
+            <button type="button" onClick={() => reopen(row._id)}
+            className="block min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-4 py-3 text-left hover:border-emerald-600">
             <strong>{row.values.contractNumber} · {row.values.partnerName}</strong>
             <span className="block text-sm text-slate-600">{row.template.name}</span>
-          </button>)}
+            </button>
+            <button type="button" className={secondaryButton + ' text-red-700'} aria-label={'Xóa hợp đồng ' + row.values.contractNumber}
+              onClick={() => removeContract(row)}>Xóa</button>
+          </div>)}
           {offset > 0 && <button type="button" className={secondaryButton} onClick={() => setOffset(offset - 30)}>Trang trước</button>}
           {hasMore && <button type="button" className={secondaryButton} onClick={() => setOffset(offset + 30)}>Trang sau</button>}
         </section>

@@ -19,6 +19,7 @@ import articleRouter from './src/routes/articleRoutes.js';
 import staffRouter from './src/routes/staffRoutes.js';
 import storeVoucherRouter from './src/routes/storeVoucherRoutes.js';
 import warehouseRouter from './src/routes/warehouseRoutes.js';
+import stockCountRouter from './src/routes/stockCountRoutes.js';
 import campaignRouter from './src/routes/campaignRoutes.js';
 import customerRouter from './src/routes/customerRoutes.js';
 import spreadsheetRouter from './src/routes/spreadsheetRoutes.js';
@@ -111,6 +112,7 @@ async function startServer() {
   app.use('/api', staffRouter);
   app.use('/api/vouchers', storeVoucherRouter);
   app.use('/api/warehouses', warehouseRouter);
+  app.use('/api/stock-counts', stockCountRouter);
   app.use('/api/campaigns', campaignRouter);
   app.use(createIntegrationRouter(__dirname));
   app.use('/api/customers', customerRouter);
