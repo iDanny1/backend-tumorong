@@ -46,7 +46,7 @@ test('product router preserves catalog filtering, sorting, and generic database 
     return { sort: async (sort: unknown) => {
       sorting.push(sort);
       if (unavailable) throw new Error('private database detail');
-      return [{ _id: 'product-1', name: 'Sâm Ngọc Linh', price: 120000 }];
+      return [Product.hydrate({ name: 'Sâm Ngọc Linh', price: 120000 })];
     } };
   }) as any);
   const request = await fixture(context);
@@ -60,6 +60,45 @@ test('product router preserves catalog filtering, sorting, and generic database 
   const failed = await request('/api/products');
   assert.equal(failed.status, 500);
   assert.deepEqual(await failed.json(), { error: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
+});
+
+test('legacy products can be opened and saved with their images and categories', async context => {
+  const id = '507f1f77bcf86cd799439011';
+  const legacy = {
+    _id: id, name: 'Sâm Ngọc Linh', image: 'https://example.com/sam.jpg',
+    categoryId: ['sam'], categoryName: 'Sâm', salePrice: 120000,
+  };
+  const request = await fixture(context);
+  context.mock.method(Product, 'find', (() => ({ sort: async () => [
+    Product.hydrate(legacy),
+    Product.hydrate({ ...legacy, images: [], categoryIds: [], categoryNames: [] }),
+  ] })) as any);
+  const writes: unknown[] = [];
+  context.mock.method(Product, 'findOneAndUpdate', (async (_filter: unknown, update: { $set: object }) => {
+    writes.push(update.$set);
+    return { ...legacy, ...update.$set };
+  }) as any);
+
+  const listed = await request('/api/products');
+  assert.equal(listed.status, 200);
+  const [product, cleared] = await listed.json();
+  assert.deepEqual(product.images, [legacy.image]);
+  assert.deepEqual(product.categoryIds, legacy.categoryId);
+  assert.deepEqual(product.categoryNames, [legacy.categoryName]);
+  assert.deepEqual(cleared.images, []);
+  assert.deepEqual(cleared.categoryIds, []);
+  assert.deepEqual(cleared.categoryNames, []);
+
+  const { _id, stock, ...details } = product;
+  const save = (body: object) => request(`/api/products/${_id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  assert.equal((await save({ ...details, name: 'Tên đã sửa', images: [] })).status, 200);
+  assert.equal((await save({ name: 'Tên cũ', image: legacy.image, categoryId: 'sam' })).status, 200);
+  assert.deepEqual(writes, [
+    { name: 'Tên đã sửa', price: 0, images: [], categoryIds: ['sam'], categoryNames: ['Sâm'] },
+    { name: 'Tên cũ', images: [legacy.image], categoryIds: ['sam'] },
+  ]);
 });
 
 test('customer Excel export and multipart reimport retain Vietnamese text, phones, and delivery addresses', async context => {

@@ -1,12 +1,23 @@
 import { Router, type Response } from 'express';
 import mongoose from 'mongoose';
 import Decimal from 'decimal.js-light';
-import { Product } from '../models/Product.js';
-import { parseCatalog } from '../lib/productCatalog.js';
+import { Product, type IProduct } from '../models/Product.js';
+import { normalizeLegacyCatalogFields, parseCatalog } from '../lib/productCatalog.js';
 import { InventoryError, inventoryTransaction, lockWarehouse } from '../services/inventory.js';
 
 const router = Router({ caseSensitive: true });
 const current = { archived: { $ne: true } };
+
+function serializeProduct(product: IProduct) {
+  const stored = product.toObject();
+  const fields = { ...stored };
+  // Mongoose fills missing arrays with defaults when it reads an older record.
+  for (const key of ['images', 'categoryIds', 'categoryNames']) {
+    if (product.$isDefault(key)) delete fields[key];
+  }
+  return { ...stored, ...normalizeLegacyCatalogFields(fields) };
+}
+
 function failure(res: Response, error: any) {
   if (error instanceof InventoryError) return res.status(error.status).json({ error: error.message });
   if (error.code === 11000) return res.status(409).json({ error: 'SKU đã thuộc về sản phẩm khác.' });
@@ -26,7 +37,8 @@ router.get('/', async (req, res) => {
       if (!Number.isSafeInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 200) return res.status(400).json({error:'Trang không hợp lệ.'});
       query.skip((page-1)*limit).limit(limit);
     }
-    res.json(await query.sort({ isFeatured: -1, createdAt: -1, _id: -1 }));
+    const products = await query.sort({ isFeatured: -1, createdAt: -1, _id: -1 });
+    res.json(products.map(serializeProduct));
   } catch (error) { failure(res, error); }
 });
 
