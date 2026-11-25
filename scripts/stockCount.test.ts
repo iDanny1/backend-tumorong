@@ -13,6 +13,39 @@ import * as xlsx from 'xlsx';
 import mongoose from 'mongoose';
 import { sendStockCountMail } from '../src/services/stockCountMail.js';
 import { stockReportCc, stockReportRecipients } from '../src/lib/stockCount.js';
+import { saveStockCountBatch, stockCountBatchInput } from '../src/services/stockCountBatch.js';
+
+test('batch saves all product observations once and validates duplicate products and negative amounts', async t => {
+  const Batch = mongoose.model('StockCountBatch');
+  const input = { requestId: randomUUID(), warehouseId: 'a'.repeat(24), checkerName: 'Lan', items: [
+    { productId: 'b'.repeat(24), quantity: 0, packaging: '10 gói/hộp' },
+    { productId: 'c'.repeat(24), quantity: 1.5, packaging: 'Túi' },
+  ] };
+  assert.ok(stockCountBatchInput.safeParse(input).success);
+  assert.equal(stockCountBatchInput.safeParse({ ...input, items: [input.items[0], input.items[0]] }).success, false);
+  assert.equal(stockCountBatchInput.safeParse({ ...input, items: [{ ...input.items[0], quantity: -1 }] }).success, false);
+  let saved: any = null;
+  let stored: any[] = [];
+  const session = { name: 'batch-session' };
+  t.mock.method(mongoose.connection, 'transaction', async operation => operation(session));
+  t.mock.method(Batch, 'findById', () => ({ lean: async () => saved }));
+  t.mock.method(Batch, 'create', async (records, options) => { assert.equal(options.session, session); saved = records[0]; });
+  t.mock.method(Warehouse, 'findOne', () => ({ session: () => ({ lean: async () => ({ name: 'Kho A' }) }) }));
+  t.mock.method(Product, 'find', () => ({ session: () => ({ lean: async () => input.items.map((item, index) => ({
+    _id: item.productId, name: 'Sản phẩm ' + index, unit: 'hộp',
+  })) }) }));
+  t.mock.method(StockCount, 'insertMany', async (records, options) => { assert.equal(options.session, session); stored.push(...records); });
+  const staff = { _id: 'staff', username: 'it', name: 'Người nhập' };
+  assert.equal((await saveStockCountBatch(input, staff)).count, 2);
+  assert.deepEqual(stored.map(row => row.quantity), [0, 1.5]);
+  assert.equal(stored[0].checkerName, 'Lan');
+  assert.equal(stored[0].countedBy, 'Người nhập');
+  assert.equal(stored[0].createdAt, stored[1].createdAt);
+  await saveStockCountBatch(input, staff);
+  assert.equal(stored.length, 2);
+  await assert.rejects(saveStockCountBatch({ ...input, checkerName: 'Minh' }, staff), /nội dung khác/);
+  assert.deepEqual(routeRoles('POST', '/api/stock-counts/batch'), ['admin', 'warehouse']);
+});
 
 test('Gmail submits one message per reviewed report, retrying only a confirmed failure', async t => {
   const restore = ['STOCK_REPORT_GOOGLE_CLIENT_ID', 'STOCK_REPORT_GOOGLE_CLIENT_SECRET', 'STOCK_REPORT_GOOGLE_REFRESH_TOKEN'].map(key => [key, process.env[key]]);

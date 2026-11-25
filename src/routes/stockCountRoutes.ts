@@ -6,6 +6,8 @@ import { Product } from '../models/Product.js';
 import { Warehouse } from '../models/Warehouse.js';
 import { dailyStockCountRows, stockCountWorkbook } from '../services/stockCountReport.js';
 import { sendStockCountMail, sendStockCountTest, StockReportMailError } from '../services/stockCountMail.js';
+import { saveStockCountBatch, stockCountBatchInput } from '../services/stockCountBatch.js';
+import { InventoryError } from '../services/inventory.js';
 
 const router = Router({ caseSensitive: true });
 const objectId = z.string().regex(/^[a-f\d]{24}$/i).toLowerCase();
@@ -59,6 +61,17 @@ router.post('/report/email', async (req, res) => {
   } catch (err) {
     if (err instanceof StockReportMailError) return res.status(err.status).json({ error: err.message });
     res.status(500).json({ error: 'Chưa xác nhận được kết quả gửi báo cáo.' });
+  }
+});
+
+router.post('/batch', async (req, res) => {
+  const input = stockCountBatchInput.safeParse(req.body);
+  if (!input.success) return res.status(400).json({ error: 'Kiểm tra số lượng từ 0, quy cách và tên người kiểm. Mỗi sản phẩm chỉ nhập một dòng, tối đa 200 dòng.' });
+  try {
+    res.json(await saveStockCountBatch(input.data, req.adminUser));
+  } catch (err) {
+    if (err instanceof InventoryError) return res.status(err.status).json({ error: err.message });
+    res.status(500).json({ error: 'Chưa xác nhận được phiếu kiểm kê. Giữ nguyên bảng và thử lưu lại.' });
   }
 });
 
