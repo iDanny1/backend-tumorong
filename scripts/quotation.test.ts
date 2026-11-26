@@ -164,6 +164,18 @@ test('quote creation is isolated, idempotent and reprints a frozen seller and pr
   assert.equal((await request('POST', recovery)).status, 200);
   assert.equal(records.length, beforeFailure + 1, 'Recovery does not create a second quotation');
   assert.equal(customers.records.filter(row => row.name === recovery.customerName).length, 1);
+
+  const giftBody = { ...giftSample(), requestId: 'quote-request-tet-gift01' };
+  const giftCreated = await request('POST', giftBody);
+  assert.equal(giftCreated.status, 201);
+  assert.deepEqual(giftCreated.result.items[0].gift, giftBody.items[0].gift);
+  assert.equal(records.at(-1).totals.total, 325200);
+  assert.equal((await request('POST', giftBody)).status, 200);
+  giftBody.items[0].gift!.toppings[0].price = 99999;
+  const giftHistory = await request('GET', {}, { q: giftCreated.result.number });
+  assert.equal(giftHistory.result.items.length, 1);
+  assert.equal(giftHistory.result.items[0].items[0].gift.toppings[0].price, 10000);
+  assert.equal(quotePricing(giftHistory.result.items[0]).total, 325200);
 });
 
 test('custom gift quotes preserve repeated toppings, enforce three and verify component prices', () => {
@@ -196,4 +208,76 @@ test('gift toppings add their quoted price per box after box-only discount and V
   data.items[0].discountType = 'amount';
   data.items[0].discount = 200001;
   assert.throws(() => normalizeQuote(data));
+});
+
+function giftSample(): QuoteData {
+  return { ...sample(), items: [{ ...firstLine, quantity: 2, unitPrice: 160000,
+    discount: 10000, discountType: 'amount', vatRate: 8,
+    gift: { pricing: 'box-plus-toppings', box: { name: 'Box', price: 100000 },
+      toppings: [10000, 20000, 30000].map(price => ({ name: 'Tea', price })) },
+  }] };
+}
+
+test('gift amount discount applies once per line and toppings scale with box quantity', () => {
+  const data = giftSample();
+  const pricing = quotePricing(normalizeQuote(data));
+  assert.deepEqual(pricing.lines, [320000]);
+  assert.deepEqual(pricing.discounts, [10000]);
+  assert.deepEqual(pricing.taxable, [310000]);
+  assert.deepEqual(pricing.lineVat, [15200]);
+  assert.equal(pricing.total, 325200);
+});
+
+test('free or fully discounted gift boxes keep the full topping price without box VAT', () => {
+  for (const freeBox of [true, false]) {
+    const data = giftSample();
+    const item = data.items[0];
+    item.discountType = 'percent';
+    item.discount = freeBox ? 0 : 100;
+    if (freeBox) {
+      item.gift!.box.price = 0;
+      item.unitPrice = 60000;
+    }
+    const pricing = quotePricing(normalizeQuote(data));
+    assert.equal(pricing.taxable[0], 120000);
+    assert.equal(pricing.vat, 0);
+    assert.equal(pricing.total, 120000);
+  }
+});
+
+test('mixed gift and regular quotes retain their separate discount and VAT rules', () => {
+  const data = giftSample();
+  data.items.push({ ...firstLine, quantity: 3, unitPrice: 50000, discount: 10,
+    discountType: 'percent', vatRate: 10 });
+  const pricing = quotePricing(normalizeQuote(data));
+  assert.deepEqual(pricing.taxable, [310000, 135000]);
+  assert.deepEqual(pricing.lineVat, [15200, 13500]);
+  assert.equal(pricing.total, 473700);
+  data.items[0].quantity = null;
+  const partial = quotePricing(normalizeQuote(data));
+  assert.equal(partial.total, null);
+  assert.deepEqual(partial.taxable, [null, 135000]);
+});
+
+test('gift validation rejects incomplete names, invalid component prices and stale totals', () => {
+  const changes = [
+    (item: QuoteLine) => { item.gift!.box.name = ' '; },
+    (item: QuoteLine) => { item.gift!.toppings[0].name = ''; },
+    (item: QuoteLine) => { item.gift!.box.price = -1; },
+    (item: QuoteLine) => { item.gift!.toppings[0].price = 0.5; },
+    (item: QuoteLine) => { item.gift!.toppings[0].price = Number.NaN; },
+    (item: QuoteLine) => { item.gift!.toppings[0].price = Number.POSITIVE_INFINITY; },
+    (item: QuoteLine) => { item.gift!.toppings.pop(); },
+    (item: QuoteLine) => { item.gift!.toppings[0].price += 1; },
+    (item: QuoteLine) => { item.discount = 200001; },
+  ];
+  for (const change of changes) {
+    const data = giftSample();
+    change(data.items[0]);
+    assert.throws(() => normalizeQuote(data));
+  }
+  const freeTopping = giftSample();
+  freeTopping.items[0].gift!.toppings[0].price = 0;
+  freeTopping.items[0].unitPrice -= 10000;
+  assert.doesNotThrow(() => normalizeQuote(freeTopping));
 });

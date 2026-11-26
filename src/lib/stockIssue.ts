@@ -13,6 +13,7 @@ export interface StockIssueLine {
 }
 
 export interface StockIssueData {
+  documentOnly?: boolean;
   documentType?: 'stock-issue' | 'handover' | 'receipt';
   sourceIssueId?: string;
   sourceOrderId?: string;
@@ -53,7 +54,7 @@ export interface StockIssueData {
 }
 
 export interface SavedStockIssue extends StockIssueData {
-  inventoryStatus?: 'posted' | 'linked' | 'legacy';
+  inventoryStatus?: 'posted' | 'linked' | 'legacy' | 'document-only';
   _id: string;
   number: string;
   requestId: string;
@@ -254,6 +255,11 @@ export function normalizeStockIssue(raw: unknown): StockIssueData {
   if (items.reduce((sum, item) => sum + Math.round(item.quantity * item.unitPrice), 0) > 999_999_999_999) throw new Error('Tiền hàng vượt giới hạn 999.999.999.999 đồng.');
   if (stockIssueAmounts({ items, vatRate, ...pricing } as StockIssueData).total > 999_999_999_999) throw new Error('Tổng phiếu vượt giới hạn 999.999.999.999 đồng.');
   const details: Partial<StockIssueData> = {};
+  if (input.documentOnly !== undefined && typeof input.documentOnly !== 'boolean') throw new Error('Chế độ tạo phiếu không hợp lệ.');
+  if (input.documentOnly === true) {
+    if (input.warehouseId || input.sourceIssueId || input.sourceOrderId) throw new Error('Phiếu không gắn kho không được liên kết kho hoặc chứng từ đã trừ tồn.');
+    details.documentOnly = true;
+  }
   for (const key of ['sourceIssueId', 'sourceOrderId'] as const) {
     if (input[key] === undefined || input[key] === '') continue;
     const id = input[key];
@@ -278,7 +284,7 @@ export function normalizeStockIssue(raw: unknown): StockIssueData {
     ...(handover ? { documentType: 'handover' as const } : receipt ? { documentType: 'receipt' as const } : {}), ...pricing, ...display, ...details, date, companyName: noCompany ? '' : text('companyName', 'Tên công ty', true), companyAddress: noCompany ? '' : text('companyAddress', 'Địa chỉ công ty', true),
     customerId: text('customerId', 'Mã khách hàng'), recipient: text('recipient', 'Họ và tên người nhận hàng', !modern), phone: text('phone', 'SĐT người nhận', false, 30),
     address: text('address', 'Địa chỉ'), deliveryAddress: text('deliveryAddress', 'Địa điểm giao hàng'),
-    reason: text('reason', 'Lý do xuất', true), warehouseId: text('warehouseId', 'Mã kho'), warehouseName: text('warehouseName', 'Kho xuất', true), warehouseLocation: text('warehouseLocation', 'Địa điểm kho'),
+    reason: text('reason', 'Lý do xuất', true), warehouseId: text('warehouseId', 'Mã kho'), warehouseName: text('warehouseName', 'Kho xuất', !details.documentOnly), warehouseLocation: text('warehouseLocation', 'Địa điểm kho'),
     debitAccount: text('debitAccount', 'Tài khoản Nợ', false, 30), creditAccount: text('creditAccount', 'Tài khoản Có', false, 30), attachments: text('attachments', 'Chứng từ kèm theo'),
     creator: text('creator', 'Người lập phiếu'), receiver: text('receiver', 'Người nhận ký'), keeper: text('keeper', 'Thủ kho'), accountant: text('accountant', 'Kế toán trưởng'), director: text('director', 'Giám đốc'), vatRate, items,
   };

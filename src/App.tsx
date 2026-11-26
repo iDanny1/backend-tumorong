@@ -31,6 +31,7 @@ import { Order, User, Category, Product, Customer, Warehouse } from './types';
 import { api, ApiError } from './lib/api';
 import { StockIssueManagement } from './components/stock-issues/StockIssueManagement';
 import { ContractManagement } from './components/contracts/ContractManagement';
+import { adminRoutes, defaultRoute, loginDestination, routeForPath } from './lib/adminRoutes';
 
 export default function App() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -41,6 +42,8 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [pathname, setPathname] = useState(window.location.pathname);
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [visitCount, setVisitCount] = useState<number>(0);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -60,7 +63,7 @@ export default function App() {
   const canManageContracts = ['admin', 'sales'].includes(user?.role.toLowerCase() ?? '');
   const showContracts = canManageContracts && activeMenu === 'Hợp đồng';
 
-  const [warehouseDocument, setWarehouseDocument] = useState<{ type: 'receipt' | 'stock-issue'; warehouse: Warehouse } | null>(null);
+  const [warehouseDocument, setWarehouseDocument] = useState<{ type: 'receipt' | 'stock-issue'; warehouse?: Warehouse; documentOnly?: boolean } | null>(null);
   const [newProduct, setNewProduct] = useState({
     name: '',
     unit: '',
@@ -85,18 +88,61 @@ export default function App() {
     active: true
   });
 
+  const changePath = (path: string, replace = false) => {
+    window.history[replace ? 'replaceState' : 'pushState'](null, '', path);
+    setPathname(window.location.pathname);
+  };
+
+  const navigateMenu = (menu: string) => {
+    const route = adminRoutes.find(item => item.menu === menu);
+    if (route && window.location.pathname !== route.path) changePath(route.path);
+    setActiveMenu(menu);
+  };
+
   useEffect(() => {
     localStorage.removeItem('admin_user');
     let mounted = true;
     api.get('/api/auth/me').then(profile => {
       if (!mounted) return;
       setUser(profile); setIsLoggedIn(true);
-      if (profile.role === 'warehouse') setActiveMenu(stockCountMenu);
-    }).catch(() => {}).finally(() => { if (mounted) setLoading(false); });
+    }).catch(() => {}).finally(() => { if (mounted) { setLoading(false); setAuthChecked(true); } });
     const expired = () => { setUser(null); setIsLoggedIn(false); };
     window.addEventListener('admin-session-expired', expired);
     return () => { mounted = false; window.removeEventListener('admin-session-expired', expired); };
   }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      setPathname(window.location.pathname);
+      setSelectedOrder(null);
+      setSelectedCustomer(null);
+      setEditingProduct(null);
+      setViewMode('admin');
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
+    if (!authChecked) return;
+    if (!isLoggedIn) {
+      if (pathname !== '/login') {
+        const next = routeForPath(pathname) ? `?next=${encodeURIComponent(pathname)}` : '';
+        changePath(`/login${next}`, true);
+      }
+      return;
+    }
+    if (!user) return;
+    if (pathname === '/' || pathname === '/login') {
+      changePath((pathname === '/login' && loginDestination()) || defaultRoute(user.role), true);
+      return;
+    }
+    const route = routeForPath(pathname);
+    if (route) {
+      setActiveMenu(route.menu);
+      if (route.menu === 'Hợp đồng') setContractsOpened(true);
+    }
+  }, [authChecked, isLoggedIn, user, pathname]);
 
   useEffect(() => {
     if (isLoggedIn) {
@@ -171,12 +217,7 @@ export default function App() {
       setUser(userData);
       setIsLoggedIn(true);
       setLoginForm({ username: '', password: '' });
-      // Chuyển hướng theo role
-      if (userData.role === 'warehouse') {
-        setActiveMenu(stockCountMenu);
-      } else {
-        setActiveMenu('Đơn hàng');
-      }
+      changePath(loginDestination() || defaultRoute(userData.role), true);
     } catch (err: any) {
       console.error('Login connection error:', err);
       alert(err.message || 'Sai tài khoản hoặc mật khẩu!');
@@ -186,6 +227,7 @@ export default function App() {
   const handleLogout = async () => {
     try {
       await api.post('/api/auth/logout');
+      changePath('/login', true);
       setUser(null); setIsLoggedIn(false);
       localStorage.removeItem('admin_user');
     } catch (error: any) { alert(error.message || 'Chưa đăng xuất được. Vui lòng thử lại.'); }
@@ -425,7 +467,8 @@ export default function App() {
         <WarehouseManagement 
           products={products} 
           onRefresh={fetchProducts}
-          onDocument={(type, warehouse) => { setWarehouseDocument({ type, warehouse }); setActiveMenu('Xuất phiếu'); }}
+          onCreateDocument={() => { setWarehouseDocument({ type: 'stock-issue', documentOnly: true }); navigateMenu('Xuất phiếu'); }}
+          onDocument={(type, warehouse) => { setWarehouseDocument({ type, warehouse }); navigateMenu('Xuất phiếu'); }}
         />
       );
     }
@@ -486,6 +529,8 @@ export default function App() {
     );
   };
 
+  if (!authChecked) return null;
+
   if (!isLoggedIn) {
     return (
       <Login 
@@ -538,8 +583,10 @@ export default function App() {
         activeMenu={activeMenu}
         setActiveMenu={menu => {
           setWarehouseDocument(null);
+          setSelectedOrder(null);
+          setSelectedCustomer(null);
           if (menu === 'Hợp đồng') setContractsOpened(true);
-          setActiveMenu(menu);
+          navigateMenu(menu);
         }}
         user={user}
         onLogout={handleLogout}
@@ -559,18 +606,22 @@ export default function App() {
           onSelectOrder={(order) => {
             setSelectedOrder(order);
             setShowNotifications(false);
-            setActiveMenu('Đơn hàng');
+            navigateMenu('Đơn hàng');
             setActiveTab('Chờ xác nhận');
           }}
           onViewAllOrders={() => {
-            setActiveMenu('Đơn hàng');
+            navigateMenu('Đơn hàng');
             setShowNotifications(false);
           }}
         />
 
         <div className={`flex-1 overflow-y-auto p-4 md:p-6 ${activeMenu !== 'Đơn hàng' ? 'pt-2 md:pt-3' : ''}`}>
-          {!showContracts && renderContent()}
-          {canManageContracts && contractsOpened && (
+          {!routeForPath(pathname) ? (
+            <p>Trang này không tồn tại.</p>
+          ) : !routeForPath(pathname)?.roles.includes(user?.role.toLowerCase() ?? '') ? (
+            <p>Bạn không có quyền truy cập trang này.</p>
+          ) : !showContracts && renderContent()}
+          {routeForPath(pathname)?.roles.includes(user?.role.toLowerCase() ?? '') && canManageContracts && contractsOpened && (
             <section hidden={!showContracts}>
               <ContractManagement key={user?.username} />
             </section>

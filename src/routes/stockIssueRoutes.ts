@@ -12,7 +12,7 @@ const issueSchema = new Schema({
   number: { type: String, required: true, unique: true },
   data: { type: Schema.Types.Mixed, required: true },
   totals: { type: Schema.Types.Mixed, required: true },
-  inventoryStatus: { type: String, enum: ['posted', 'linked'] },
+  inventoryStatus: { type: String, enum: ['posted', 'linked', 'document-only'] },
   postedBy: String,
 }, { timestamps: true });
 issueSchema.index({ 'data.date': -1, createdAt: -1, _id: -1 });
@@ -111,7 +111,7 @@ router.post('/', async (req, res) => {
       if (!isDeepStrictEqual(existing.data, data)) return res.status(409).json({ message: 'Phiếu này đã được lưu với nội dung khác. Hãy mở Phiếu đã lưu để kiểm tra và tạo bản sao nếu cần sửa.' });
       return respondWithCustomer(res, existing);
     }
-    if (!mongoose.isObjectIdOrHexString(data.warehouseId)) return res.status(400).json({ message: 'Vui lòng chọn kho từ danh mục trước khi ghi sổ.' });
+    if (!data.documentOnly && !mongoose.isObjectIdOrHexString(data.warehouseId)) return res.status(400).json({ message: 'Vui lòng chọn kho từ danh mục trước khi ghi sổ.' });
     const missingProduct = data.items.findIndex(item => !mongoose.isObjectIdOrHexString(item.productId));
     if (missingProduct >= 0) return res.status(400).json({ message: `Dòng ${missingProduct + 1} chưa liên kết sản phẩm. Vui lòng chọn hàng từ danh mục.` });
     const lines = deliveredLines(data);
@@ -119,15 +119,16 @@ router.post('/', async (req, res) => {
     const prefix = data.documentType === 'handover' ? 'BBBG' : data.documentType === 'receipt' ? 'PNK' : 'PXK';
     const counter = await StockIssueCounter.findOneAndUpdate({ _id: prefix === 'PXK' ? day : `${prefix}:${day}` }, { $inc: { value: 1 } }, { upsert: true, new: true });
     const number = `${prefix}${day}-${String(counter.value).padStart(4, '0')}`;
-    const doc = await inventoryTransaction(async session => {
+    const persist = async (session?: mongoose.ClientSession) => {
       const linked = Boolean(data.sourceIssueId || data.sourceOrderId);
       // Claim the request before mutating stock. A failed movement rolls back
       // this insert and every touched product in the same transaction.
       const [saved] = await StockIssue.create([{ requestId, number, data, totals: stockIssueAmounts(data),
-        inventoryStatus: linked ? 'linked' : 'posted', postedBy: req.adminUser?.username }], { session });
+        inventoryStatus: data.documentOnly ? 'document-only' : linked ? 'linked' : 'posted', postedBy: req.adminUser?.username }], { session });
+      if (data.documentOnly) return saved;
       if (data.sourceIssueId) {
         const source = await StockIssue.findById(data.sourceIssueId, null, { session }).lean();
-        if (!source?.inventoryStatus || ['handover', 'receipt'].includes(source.data.documentType)
+        if (!['posted', 'linked'].includes(source?.inventoryStatus) || ['handover', 'receipt'].includes(source.data.documentType)
           || source.data.warehouseId !== data.warehouseId || !isDeepStrictEqual(deliveredLines(source.data), lines)) {
           throw new InventoryError(409, 'Biên bản phải khớp kho và số lượng từng dòng của phiếu xuất đã ghi sổ.');
         }
@@ -137,7 +138,8 @@ router.post('/', async (req, res) => {
         await applyWarehouseMovement(session, data.warehouseId, lines, data.documentType === 'receipt' ? 'in' : 'out');
       }
       return saved;
-    });
+    };
+    const doc = data.documentOnly ? await persist() : await inventoryTransaction(persist);
     return respondWithCustomer(res, doc, 201);
   } catch (error: any) {
     if (error instanceof InventoryError) return res.status(error.status).json({ message: error.message });

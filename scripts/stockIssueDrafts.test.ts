@@ -48,3 +48,14 @@ test('warehouse addresses accept both payloads, trim values and reject invalid t
   assert.throws(() => warehouseInput({ location: 42 }));
   assert.throws(() => warehouseInput({ name: ' ' }));
 });
+
+
+test('document-only drafts retain their mode after recovery and archival', () => {
+  const form = { ...freshIssue('IT'), documentOnly: true, warehouseName: '', items: [] };
+  const draft = { form, requestId: 'paper-only-draft' };
+  assert.deepEqual(recoverIssueDraft(draft, 'IT')?.form, form);
+  const storage = memoryStorage();
+  archiveIssueDraft(storage, 'drafts', draft, 'IT');
+  assert.equal(readIssueDrafts(storage, 'drafts', 'IT')[0].form.documentOnly, true);
+  assert.equal(recoverIssueDraft({ ...draft, form: { ...form, documentOnly: 'true' } }, 'IT')?.form.documentOnly, undefined);
+});

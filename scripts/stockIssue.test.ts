@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { moneyInWords, newStockIssue, normalizeStockIssue, stockIssueTotals, upgradeStockIssue } from '../src/lib/stockIssue.js';
-import express from 'express';
+import { routerRequest } from './helpers/routerRequest.js';
 import mongoose from 'mongoose';
 import stockIssueRouter from '../src/routes/stockIssueRoutes.js';
 import { mockDocumentCustomers } from './helpers/documentCustomerModel.js';
@@ -59,7 +59,7 @@ test('Vietnamese words handle zero, gaps, special endings and billions', () => {
   assert.equal(moneyInWords(1e12), '');
 });
 
-test('HTTP routes validate, persist snapshots, deduplicate retries and search without a live database', async context => {
+test('routes validate, persist snapshots, deduplicate retries and search without a live database', async context => {
   const customers = mockDocumentCustomers(context);
   const records: any[] = [];
   let sequence = 0;
@@ -104,7 +104,7 @@ test('HTTP routes validate, persist snapshots, deduplicate retries and search wi
   } }));
   context.mock.method(Counter, 'findOneAndUpdate', async () => ({ value: ++sequence }));
   context.mock.method(Model, 'create', async ([entry]: any[], options: any) => {
-    assert.equal(options.session, session);
+    assert.equal(options.session, entry.data.documentOnly ? undefined : session);
     if (failDocument) throw new Error('Paper database unavailable');
     if (records.some(row => row.requestId === entry.requestId)) throw Object.assign(new Error('Duplicate'), { code: 11000 });
     if (entry.data.sourceIssueId && records.some(row => row.data.sourceIssueId === entry.data.sourceIssueId)) {
@@ -119,12 +119,8 @@ test('HTTP routes validate, persist snapshots, deduplicate retries and search wi
     const regex = new RegExp(search, 'i');
     return records.filter(row => regex.test(row.number) || regex.test(row.data.recipient) || regex.test(row.data.phone));
   } }) }) }));
-  const app = express(); app.use(express.json()); app.use('/api/stock-issues', stockIssueRouter);
-  const server = app.listen(0, '127.0.0.1');
-  await new Promise<void>(resolve => server.once('listening', resolve));
-  context.after(() => new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())));
-  const address = server.address() as { port: number };
-  const url = `http://127.0.0.1:${address.port}/api/stock-issues`;
+  const url = 'http://localhost/api/stock-issues';
+  const fetch = routerRequest(stockIssueRouter, '/api/stock-issues');
   const payload = { ...sample(), requestId: 'test-request-00000001' };
   const post = (data: any) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
   const response = await post(payload);
@@ -274,4 +270,33 @@ test('HTTP routes validate, persist snapshots, deduplicate retries and search wi
   assert.equal((await post({ ...orderIssue, requestId: 'test-other-order-issue' })).status, 409);
   assert.equal((await post({ ...linked, sourceIssueId: orderPaper._id, requestId: 'test-order-linked-handover' })).status, 201);
   assert.equal(balance.stock, beforeHandover, 'An already deducted order can have one issue and one associated handover without another debit');
+
+  const noWarehouse = { ...sample(), documentOnly: true, warehouseId: '', warehouseName: '', warehouseLocation: '' };
+  const stockBeforePaper = structuredClone(balance);
+  const movementCalls = (Product.updateOne as any).mock.calls.length;
+  const warehouseCalls = (Warehouse.updateOne as any).mock.calls.length;
+  const transactionCalls = (mongoose.connection.transaction as any).mock.calls.length;
+  for (const documentType of ['stock-issue', 'receipt', 'handover']) {
+    const paper = { ...noWarehouse, documentType, requestId: 'test-paper-only-' + documentType,
+      items: [{ ...firstLine, quantity: 2000, requested: 2000 }] };
+    const result = await post(paper);
+    assert.equal(result.status, 201);
+    const record = await result.json();
+    assert.equal(record.documentOnly, true);
+    assert.equal(record.inventoryStatus, 'document-only');
+    assert.equal(record.warehouseId, '');
+    assert.equal(record.warehouseName, '');
+    assert.equal((await post(paper)).status, 200, 'Retry reuses the saved paper');
+    assert.equal((await post({ ...paper, documentOnly: false })).status, 400, 'Posted mode still requires a warehouse');
+  }
+  assert.deepEqual(balance, stockBeforePaper, 'Document-only receipts, issues and handovers leave all balances untouched');
+  assert.equal((Product.updateOne as any).mock.calls.length, movementCalls);
+  assert.equal((Warehouse.updateOne as any).mock.calls.length, warehouseCalls);
+  assert.equal((mongoose.connection.transaction as any).mock.calls.length, transactionCalls, 'Standalone papers do not require inventory transactions');
+  const history = await (await fetch(url)).json();
+  assert.equal(history.filter((record: any) => record.inventoryStatus === 'document-only').length, 3);
+  for (const change of [{ warehouseId }, { sourceIssueId: first._id }, { sourceOrderId: 'DH123' }, { documentOnly: 'true' }]) {
+    assert.equal((await post({ ...noWarehouse, ...change, requestId: 'test-invalid-paper-only' })).status, 400);
+  }
+
 });

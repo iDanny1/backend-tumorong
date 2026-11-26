@@ -15,7 +15,7 @@ import { warehouseAddress } from '../../lib/warehouse';
 type Props = {
   products: Product[]; customers: Customer[]; user: User; orders?: Order[];
   onCustomersChanged?: () => void | Promise<void>; onInventoryChanged?: () => void | Promise<void>;
-  warehouseDocument?: { type: 'receipt' | 'stock-issue'; warehouse: Warehouse } | null;
+  warehouseDocument?: { type: 'receipt' | 'stock-issue'; warehouse?: Warehouse; documentOnly?: boolean } | null;
 };
 const documentName = (type: StockIssueData['documentType']) =>
   type === 'handover' ? 'Biên bản bàn giao' : type === 'receipt' ? 'Phiếu nhập kho' : 'Phiếu xuất kho';
@@ -51,7 +51,9 @@ export function StockIssueManagement({ products, customers, user, orders = [], o
   const canPost = user.role === 'admin' || user.role === 'warehouse';
   const [fromWarehouse] = useState<StockIssueData | undefined>(() => {
     if (!warehouseDocument) return;
-    const { type, warehouse } = warehouseDocument;
+    const { type, warehouse, documentOnly } = warehouseDocument;
+    if (documentOnly) return { ...freshIssue(user.name), documentOnly: true, documentType: type, reason: reasons[type] };
+    if (!warehouse) return;
     return { ...freshIssue(user.name), documentType: type, reason: reasons[type], warehouseId: warehouse._id,
       warehouseName: warehouse.name, warehouseLocation: warehouseAddress(warehouse), ...(type === 'receipt' && { creditAccount: '', debitAccount: '' }) };
   });
@@ -89,6 +91,7 @@ export function StockIssueManagement({ products, customers, user, orders = [], o
   const [productQuery, setProductQuery] = useState('');
   const [preview, setPreview] = useState<{ data: StockIssueData; record: SavedStockIssue | null } | null>(null);
   const [paperScale, setPaperScale] = useState(() => Math.min(1, (window.innerWidth - 48) / (210 * 96 / 25.4)));
+  const documentOnly = form.documentOnly === true;
   const receipt = form.documentType === 'receipt';
   const handover = form.documentType === 'handover';
   const totals = stockIssuePricing(form);
@@ -198,7 +201,7 @@ export function StockIssueManagement({ products, customers, user, orders = [], o
   };
 
   const replaceCurrent = (action: { copy?: StockIssueData; draft?: IssueDraft }, notice = '') => {
-    setForm(action.draft?.form || (action.copy ? upgradeStockIssue(action.copy) : freshIssue(user.name)));
+    setForm(action.draft?.form || (action.copy ? upgradeStockIssue(action.copy) : { ...freshIssue(user.name), ...(documentOnly && { documentOnly: true }) }));
     setRequestId(action.draft?.requestId || crypto.randomUUID()); setSaved(null); setPreview(null); setPendingAction(null); setError(''); setProductQuery(''); setCustomerQuery(''); setView('form'); setDraftNotice(notice);
   };
   const beginNew = (copy?: StockIssueData, draft?: IssueDraft) => {
@@ -225,7 +228,7 @@ export function StockIssueManagement({ products, customers, user, orders = [], o
   };
   const openPreview = () => {
     try {
-      if (!saved && !form.warehouseId) throw new Error('Chọn kho trong danh sách để ghi nhận số lượng.');
+      if (!saved && !documentOnly && !form.warehouseId) throw new Error('Chọn kho trong danh sách để ghi nhận số lượng.');
       if (!saved && form.items.some(item => !item.productId)) throw new Error('Có dòng hàng chưa liên kết sản phẩm. Bỏ dòng đó và chọn lại sản phẩm từ danh mục.');
       setPreview({ data: saved || normalizeStockIssue(form), record: saved }); setError('');
     }
@@ -276,7 +279,7 @@ export function StockIssueManagement({ products, customers, user, orders = [], o
   }
 
   return <div className="issue-app">
-    <header className="issue-heading"><div><div className="issue-eyebrow">XUẤT PHIẾU</div><h1>{documentName(form.documentType)}</h1><p>{receipt ? 'Ghi sổ để cộng hàng vào kho nhận.' : form.sourceIssueId || form.sourceOrderId ? 'Chứng từ liên kết với lần xuất hàng đã ghi nhận.' : 'Ghi sổ để trừ hàng tại kho xuất.'}</p></div><button type="button" className="issue-button secondary" onClick={() => { setView(view === 'form' ? 'history' : 'form'); setError(''); }}><FileText size={20} />{view === 'form' ? 'Phiếu đã lưu' : 'Về phiếu đang lập'}</button></header>
+    <header className="issue-heading"><div><div className="issue-eyebrow">XUẤT PHIẾU</div><h1>{documentName(form.documentType)}</h1><p>{documentOnly ? 'Phiếu không gắn kho: lưu và in, không thay đổi tồn kho.' : receipt ? 'Ghi sổ để cộng hàng vào kho nhận.' : form.sourceIssueId || form.sourceOrderId ? 'Chứng từ liên kết với lần xuất hàng đã ghi nhận.' : 'Ghi sổ để trừ hàng tại kho xuất.'}</p></div><button type="button" className="issue-button secondary" onClick={() => { setView(view === 'form' ? 'history' : 'form'); setError(''); }}><FileText size={20} />{view === 'form' ? 'Phiếu đã lưu' : 'Về phiếu đang lập'}</button></header>
     {syncStatus && <p role="status" className={syncStatus.state === 'error' ? 'issue-error' : 'issue-draft'}><strong>Kết nối AppSheet: </strong>{syncStatus.message}</p>}
     <div className="issue-current-actions">
       <button type="button" className="issue-button secondary" disabled={saving} onClick={() => beginNew()}><Plus size={18} />Tạo phiếu mới</button>
@@ -286,7 +289,7 @@ export function StockIssueManagement({ products, customers, user, orders = [], o
     {drafts.length > 0 && <details className="issue-card issue-draft-list"><summary>Bản nháp đã lưu trên máy này ({drafts.length})</summary><div className="issue-history">{drafts.map(draft => <button type="button" key={draft.requestId} onClick={() => beginNew(undefined, draft)}><span><strong>{(draft.form.isOrganization && draft.form.organizationName) || draft.form.recipient || 'Chưa nhập người nhận'}</strong><small>{documentName(draft.form.documentType)} · {draft.form.date} · {draft.form.items.length} mặt hàng · {draft.form.warehouseName || 'Chưa chọn kho'}</small></span><span>Mở bản nháp</span></button>)}</div></details>}
     {view === 'history' ? <StockIssueHistory onOpen={record => { setPreview({ data: record, record }); setError(''); }} /> : <>
       <div className="issue-steps"><span><b>1</b> {receipt ? 'Người giao & kho' : 'Người nhận & kho'}</span><span><b>2</b> {receipt ? 'Hàng nhập' : 'Hàng xuất'}</span><span><b>3</b> Xem phiếu & in</span></div>
-      {saved ? <div className="issue-success" role="status"><Check size={20} /><span>Đã lưu <strong>{saved.number}</strong>. Bạn có thể in lại hoặc lập phiếu tiếp theo.</span></div> : <p className="issue-draft" role="status">{storageError || `${draftNotice} Bản nháp được tự giữ trên máy này khi bạn nhập. Chọn “Ghi sổ” sau khi kiểm tra phiếu.`}</p>}
+      {saved ? <div className="issue-success" role="status"><Check size={20} /><span>Đã lưu <strong>{saved.number}</strong>. Bạn có thể in lại hoặc lập phiếu tiếp theo.</span></div> : <p className="issue-draft" role="status">{storageError || `${draftNotice} Bản nháp được tự giữ trên máy này khi bạn nhập. ${documentOnly ? 'Chọn “Lưu phiếu”' : 'Chọn “Ghi sổ”'} sau khi kiểm tra phiếu.`}</p>}
       <section className="issue-card"><DocumentTypeSelect value={form.documentType ?? 'stock-issue'} onChange={chooseDocumentType} disabled={saving} /></section>
       <fieldset disabled={!!saved || saving} className="issue-form-fields">
         <section className="issue-card"><h2><span className="issue-step">1</span> {receipt ? 'Người giao & kho nhập' : 'Người nhận & kho xuất'}</h2>
@@ -305,15 +308,15 @@ export function StockIssueManagement({ products, customers, user, orders = [], o
             <Field label={receipt ? 'Địa chỉ bên giao' : 'Địa chỉ nhận hàng'} wide><input value={form.deliveryAddress} onChange={event => change('deliveryAddress', event.target.value)} /></Field>
             <Field label="Người lập phiếu"><input value={form.creator} onChange={event => change('creator', event.target.value)} /></Field>
             <Field label="SĐT người lập phiếu"><input type="tel" maxLength={30} value={form.creatorPhone ?? ''} onChange={event => change('creatorPhone', event.target.value)} /></Field>
-            <Field label={receipt ? 'Kho nhập *' : 'Kho xuất *'}><select disabled={!!form.sourceIssueId} value={form.warehouseId} onChange={event => { const warehouse = warehouses.find(w => w._id === event.target.value); setForm(prev => ({ ...prev, warehouseId: warehouse?._id || '', warehouseName: warehouse?.name || '', warehouseLocation: warehouseAddress(warehouse) })); }}><option value="">Chọn kho</option>{warehouses.map(warehouse => <option value={warehouse._id} key={warehouse._id}>{warehouse.name}{warehouseAddress(warehouse) ? ` · ${warehouseAddress(warehouse)}` : ' · Chưa có địa chỉ'}</option>)}</select></Field>
-            {!receipt && !form.sourceIssueId && <Field label="Đơn đã trừ kho (nếu có)">
+            {documentOnly ? <Field label="Tên kho / địa điểm (không bắt buộc)"><input value={form.warehouseName} onChange={event => change('warehouseName', event.target.value)} placeholder="Nhập nếu cần hiển thị trên phiếu" /></Field> : <Field label={receipt ? 'Kho nhập *' : 'Kho xuất *'}><select disabled={!!form.sourceIssueId} value={form.warehouseId} onChange={event => { const warehouse = warehouses.find(w => w._id === event.target.value); setForm(prev => ({ ...prev, warehouseId: warehouse?._id || '', warehouseName: warehouse?.name || '', warehouseLocation: warehouseAddress(warehouse) })); }}><option value="">Chọn kho</option>{warehouses.map(warehouse => <option value={warehouse._id} key={warehouse._id}>{warehouse.name}{warehouseAddress(warehouse) ? ` · ${warehouseAddress(warehouse)}` : ' · Chưa có địa chỉ'}</option>)}</select></Field>}
+            {!documentOnly && !receipt && !form.sourceIssueId && <Field label="Đơn đã trừ kho (nếu có)">
               <input list="issued-order-codes" placeholder="Mã đơn hàng" value={form.sourceOrderId || ''} onChange={event => change('sourceOrderId', event.target.value.trim())} />
               <datalist id="issued-order-codes">{orders.filter(order => order.stockDeducted).map(order => <option key={order._id} value={order.orderId || order._id}>{order.customerName}</option>)}</datalist>
             </Field>}
             {form.sourceIssueId && <p className="issue-hint">Bàn giao theo phiếu xuất đã ghi sổ. Số lượng và kho lấy từ phiếu gốc.</p>}
             <Field label="Địa chỉ kho" wide><input value={form.warehouseLocation} onChange={event => change('warehouseLocation', event.target.value)} placeholder="Địa chỉ này sẽ hiện trên phiếu in" /></Field>
             {form.warehouseId && !form.warehouseLocation && <p className="issue-hint issue-wide">Kho này chưa có địa chỉ. Nhập địa chỉ cho phiếu hoặc cập nhật trong Quản lý kho.</p>}
-            {warehouseError && <p className="issue-hint issue-wide">{warehouseError}</p>}
+            {!documentOnly && warehouseError && <p className="issue-hint issue-wide">{warehouseError}</p>}
             <Field label={handover ? 'Ngày bàn giao *' : receipt ? 'Ngày nhập *' : 'Ngày xuất *'}><input type="date" value={form.date} onChange={event => change('date', event.target.value)} /></Field>
             <Field label={handover ? 'Lý do bàn giao *' : receipt ? 'Lý do nhập *' : 'Lý do xuất *'}><input value={form.reason} onChange={event => change('reason', event.target.value)} /></Field>
           </div>
@@ -385,7 +388,7 @@ export function StockIssueManagement({ products, customers, user, orders = [], o
           {(handover ? ([['keeper', 'Bên giao'], ['receiver', 'Bên nhận']] as const) : ([['receiver', 'Người nhận hàng ký'], ['keeper', 'Thủ kho'], ['accountant', 'Kế toán trưởng'], ['director', 'Giám đốc']] as const)).map(([key, label]) => <Field label={label} key={key}><input value={form[key]} onChange={event => change(key, event.target.value)} placeholder="Có thể để trống để ký tay" /></Field>)}
         </div></details>
       </fieldset>
-      <p className="issue-hint">{!canPost ? 'Chỉ thủ kho và quản trị viên được ghi sổ. Bạn có thể soạn nháp và xem lại chứng từ đã lưu.' : form.sourceIssueId || form.sourceOrderId ? 'Ghi sổ chứng từ liên kết giữ nguyên số tồn của lần xuất gốc.' : receipt ? 'Khi ghi sổ, số lượng thực nhập được cộng vào kho đã chọn.' : 'Khi ghi sổ, số lượng thực xuất được trừ khỏi kho đã chọn.'}</p>
+      <p className="issue-hint">{documentOnly ? 'Phiếu này chỉ lưu chứng từ, không cộng/trừ tồn kho và không cần dữ liệu nhập xuất của kho.' : !canPost ? 'Chỉ thủ kho và quản trị viên được ghi sổ. Bạn có thể soạn nháp và xem lại chứng từ đã lưu.' : form.sourceIssueId || form.sourceOrderId ? 'Ghi sổ chứng từ liên kết giữ nguyên số tồn của lần xuất gốc.' : receipt ? 'Khi ghi sổ, số lượng thực nhập được cộng vào kho đã chọn.' : 'Khi ghi sổ, số lượng thực xuất được trừ khỏi kho đã chọn.'}</p>
       <footer className="issue-action-bar">{handover ? <div><small>Biên bản bàn giao</small><strong>{form.items.length} mặt hàng</strong></div> : <div><small>Tổng tiền thanh toán</small><strong>{form.items.some(item => item.vatRate! < 0) ? 'Chọn đủ VAT' : `${money(totals.total)} đ`}</strong></div>}<button type="button" className="issue-button primary" onClick={openPreview}><Printer size={22} />Xem phiếu & in</button></footer>
     </>}
     {pendingAction && createPortal(<div className="issue-confirm-overlay"><section className="issue-confirm" role="dialog" aria-modal="true" aria-labelledby="issue-confirm-title">
@@ -397,7 +400,7 @@ export function StockIssueManagement({ products, customers, user, orders = [], o
     {error && !preview && !pendingAction && <div className="issue-error issue-error-fixed" role="alert">{error}<button aria-label="Đóng thông báo" onClick={() => setError('')}><X size={18} /></button></div>}
     {preview && createPortal(<div className="issue-preview-root" role="dialog" aria-modal="true" aria-label={documentName(preview.data.documentType)}>
       <div className="issue-preview-toolbar"><button autoFocus type="button" className="issue-button secondary" disabled={saving} onClick={() => { setPreview(null); setError(''); }}><ChevronLeft size={20} />Quay lại</button><div><strong>{preview.record ? preview.record.number : 'Kiểm tra phiếu trước khi in'}</strong><small>Khổ A4 · Chọn “Lưu dưới dạng PDF” trong cửa sổ in để tải PDF.</small></div><div className="issue-preview-actions">{canPost && preview.record && !['receipt', 'handover'].includes(preview.record.documentType || '') && ['posted', 'linked'].includes(preview.record.inventoryStatus || '') && <button type="button" className="issue-button secondary" disabled={saving} onClick={() => beginNew({ ...preview.data, documentType: 'handover', reason: reasons.handover, sourceOrderId: undefined, sourceIssueId: preview.record!._id })}>Lập bàn giao theo phiếu này</button>}
-          {preview.record ? <button type="button" className="issue-button secondary" disabled={saving} onClick={() => beginNew({ ...preview.data, sourceIssueId: undefined, sourceOrderId: undefined })}><Copy size={18} />Sao chép thành phiếu mới</button> : <button type="button" className="issue-button secondary" disabled={saving || !canPost} onClick={() => saveAndPrint(false)}>Ghi sổ</button>}<button type="button" className="issue-button primary" disabled={saving || (!preview.record && !canPost)} onClick={() => saveAndPrint(true)}><Printer size={20} />{saving ? 'Đang chuẩn bị…' : preview.record ? 'In phiếu / Lưu PDF' : 'Ghi sổ & in'}</button></div></div>
+          {preview.record ? <button type="button" className="issue-button secondary" disabled={saving} onClick={() => beginNew({ ...preview.data, sourceIssueId: undefined, sourceOrderId: undefined })}><Copy size={18} />Sao chép thành phiếu mới</button> : <button type="button" className="issue-button secondary" disabled={saving || !canPost} onClick={() => saveAndPrint(false)}>{preview.data.documentOnly ? 'Lưu phiếu' : 'Ghi sổ'}</button>}<button type="button" className="issue-button primary" disabled={saving || (!preview.record && !canPost)} onClick={() => saveAndPrint(true)}><Printer size={20} />{saving ? 'Đang chuẩn bị…' : preview.record ? 'In phiếu / Lưu PDF' : preview.data.documentOnly ? 'Lưu phiếu & in' : 'Ghi sổ & in'}</button></div></div>
       {error && <div className="issue-error" role="alert">{error}</div>}
       {preview.data.documentType !== 'handover' && preview.data.pricingVersion === 2 && <div className="issue-print-options">
         <strong>Hiển thị trên phiếu</strong>
@@ -407,7 +410,7 @@ export function StockIssueManagement({ products, customers, user, orders = [], o
         }} />
         {preview.record && <small>Lựa chọn cho lần in này; nội dung phiếu đã lưu giữ nguyên.</small>}
       </div>}
-      {preview.record && <p className="issue-preview-notice" role="status"><Check size={16} />{preview.record.inventoryStatus === 'legacy' ? 'Chứng từ cũ, chưa ghi biến động kho.' : preview.record.inventoryStatus === 'linked' ? 'Chứng từ liên kết với lần xuất hàng trước.' : 'Đã ghi sổ kho.'} In lại giữ nguyên tồn kho.</p>}
+      {preview.record && <p className="issue-preview-notice" role="status"><Check size={16} />{preview.record.inventoryStatus === 'document-only' ? 'Đã lưu phiếu không gắn kho, không thay đổi tồn kho.' : preview.record.inventoryStatus === 'legacy' ? 'Chứng từ cũ, chưa ghi biến động kho.' : preview.record.inventoryStatus === 'linked' ? 'Chứng từ liên kết với lần xuất hàng trước.' : 'Đã ghi sổ kho.'} In lại giữ nguyên tồn kho.</p>}
       <div className="issue-paper-scroll"><div className="issue-paper-fit" style={{ zoom: paperScale }}><StockIssuePaper data={preview.data} number={preview.record?.number} /></div></div>
     </div>, document.body)}
   </div>;

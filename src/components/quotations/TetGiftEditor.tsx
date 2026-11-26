@@ -30,7 +30,7 @@ export function TetGiftEditor({ gift, products, onChange }: {
           onChange={e => {
             const name = e.target.value;
             const product = boxes.find(p => p.name === name);
-            onChange({ ...gift, box: { name, price: product?.price > 0 ? product.price : -1 } });
+            onChange({ ...gift, box: { name, price: product ? (product.price > 0 ? product.price : -1) : gift.box.price } });
           }} />
         <datalist id={boxList}>{Array.from(new Set(['Hộp quà Tết 2027', ...boxes.map(p => p.name)])).map(name => <option key={name} value={name} />)}</datalist>
       </label>
@@ -49,7 +49,12 @@ export function TetGiftEditor({ gift, products, onChange }: {
         {!matches.some(p => key(p.name) === key(query)) && <button type="button" onClick={() => add(query.trim(), -1)}>Thêm món “{query.trim()}”</button>}
       </div>}
       {gift.toppings.map((part, index) => <div className="tet-topping" key={index}>
-        <span>{index + 1}. {part.name}</span>
+        <label className="tet-topping-name">
+          <span>{index + 1}.</span>
+          <input aria-label={`Tên topping ${index + 1}`} maxLength={300} value={part.name}
+            placeholder="Nhập tên topping"
+            onChange={e => onChange({ ...gift, toppings: gift.toppings.map((p, i) => i === index ? { ...p, name: e.target.value } : p) })} />
+        </label>
         {priceInput(part, price => onChange({ ...gift, toppings: gift.toppings.map((p, i) => i === index ? { ...p, price } : p) }))}
         <button type="button" className="issue-remove" aria-label={'Bỏ topping ' + part.name} onClick={() => onChange({ ...gift, toppings: gift.toppings.filter((_, i) => i !== index) })}>Bỏ</button>
       </div>)}

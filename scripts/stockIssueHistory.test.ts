@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import express from 'express';
+import { routerRequest } from './helpers/routerRequest.js';
 import mongoose from 'mongoose';
 import stockIssueRouter from '../src/routes/stockIssueRoutes.js';
 import { issueDayLabel } from '../src/lib/stockIssueHistory.js';
@@ -36,11 +36,8 @@ test('history groups all papers from September, searches literally and paginates
   context.mock.method(Model, 'find', (filter: any) => ({ sort: () => ({ skip: (offset: number) => ({ limit: (limit: number) => ({
     lean: async () => records.filter(row => matches(row, filter)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(offset, offset + limit),
   }) }) }) }));
-  const app = express(); app.use('/api/stock-issues', stockIssueRouter);
-  const server = app.listen(0, '127.0.0.1');
-  await new Promise<void>(resolve => server.once('listening', resolve));
-  context.after(() => new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())));
-  const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/stock-issues`;
+  const url = 'http://localhost/api/stock-issues';
+  const fetch = routerRequest(stockIssueRouter, '/api/stock-issues');
   const get = async (path: string) => { const response = await fetch(url + path); assert.equal(response.status, 200); return response.json(); };
   const first = await get('/days');
   assert.equal(first.days.length, 30);
