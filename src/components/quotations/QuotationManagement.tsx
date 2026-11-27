@@ -109,8 +109,8 @@ function QuoteHistory({ onOpen }: { onOpen: (record: SavedQuote) => void }) {
   </section>;
 }
 
-function QuoteLineEditor({ line, index, net, vat, images, products, update, remove }: {
-  products: Product[];
+function QuoteLineEditor({ line, index, net, vat, images, products, pricesIncludeVat, update, remove }: {
+  products: Product[]; pricesIncludeVat?: boolean;
   line: QuoteLine; index: number; net: number | null; vat: number | null; images: string[]; update: (changes: Partial<QuoteLine>) => void; remove: () => void;
 }) {
   const [failedUrl, setFailedUrl] = useState('');
@@ -119,7 +119,7 @@ function QuoteLineEditor({ line, index, net, vat, images, products, update, remo
   return <section className="issue-line" aria-label={`Dòng báo giá ${index + 1}`}>
     <div className="issue-section-title"><h3>{index + 1}. {line.gift?.box.name || line.name}{line.gift?.toppings.map(part => part.name).map((name, i) => <span key={i}> + {name}</span>)}</h3>
       <button type="button" className="issue-remove" onClick={remove}><Trash2 size={16} />Bỏ dòng</button></div>
-    {line.gift && <TetGiftEditor gift={line.gift} products={products}
+    {line.gift && <TetGiftEditor gift={line.gift} products={products} pricesIncludeVat={pricesIncludeVat}
       onChange={gift => update({ gift: { ...gift, pricing: 'gift-total' }, unitPrice: giftPrice(gift) })} />}
     <div className="quotation-line">
       <div className="quotation-photo">
@@ -129,11 +129,11 @@ function QuoteLineEditor({ line, index, net, vat, images, products, update, remo
       <div className="issue-line-grid">
         <Field name="ĐVT"><input value={line.unit} onChange={event => update({ unit: event.target.value })} placeholder="Hộp, chai…" /></Field>
         <Field name="Số lượng"><input type="number" min="0.001" step="any" placeholder="Có thể để trống" value={line.quantity ?? ''} onChange={event => update({ quantity: event.target.value === '' ? null : Number(event.target.value) })} /></Field>
-        <Field name={line.gift ? 'Giá hộp + topping chưa VAT (đ)' : 'Đơn giá chưa VAT (đ)'}><input type="number" readOnly={!!line.gift} min="0" step="1" placeholder={line.gift ? 'Chờ đủ giá thành phần' : 'Nhập đơn giá'} value={line.unitPrice < 0 ? '' : line.unitPrice} onChange={event => update({ unitPrice: event.target.value === '' ? -1 : Number(event.target.value) })} /></Field>
+        <Field name={pricesIncludeVat ? (line.gift ? 'Giá hộp + topping đã gồm VAT (đ)' : 'Đơn giá đã gồm VAT (đ)') : line.gift ? 'Giá hộp + topping chưa VAT (đ)' : 'Đơn giá chưa VAT (đ)'}><input type="number" readOnly={!!line.gift} min="0" step="1" placeholder={line.gift ? 'Chờ đủ giá thành phần' : 'Nhập đơn giá'} value={line.unitPrice < 0 ? '' : line.unitPrice} onChange={event => update({ unitPrice: event.target.value === '' ? -1 : Number(event.target.value) })} /></Field>
         <Field name={line.gift ? 'VAT hộp + topping' : 'VAT'}><select aria-label="VAT" value={line.vatRate} onChange={event => update({ vatRate: Number(event.target.value) })}>
           <option value={-1}>Chọn VAT</option>{quoteVatRates.map(rate => <option key={rate} value={rate}>{rate}%</option>)}
         </select></Field>
-        <Field name={line.gift ? 'Chiết khấu hộp + topping' : 'Chiết khấu'}><input type="number" min="0" step={line.discountType === 'amount' ? 1 : 0.01} value={line.discount} onChange={event => update({ discount: Number(event.target.value) })} /></Field>
+        <Field name={pricesIncludeVat ? 'Chiết khấu trước VAT' : line.gift ? 'Chiết khấu hộp + topping' : 'Chiết khấu'}><input type="number" min="0" step={line.discountType === 'amount' ? 1 : 0.01} value={line.discount} onChange={event => update({ discount: Number(event.target.value) })} /></Field>
         <Field name="Đơn vị chiết khấu"><select value={line.discountType} onChange={event => update({ discountType: event.target.value as QuoteLine['discountType'], discount: 0 })}>
           <option value="amount">đ / dòng</option><option value="percent">%</option>
         </select></Field>
@@ -233,7 +233,7 @@ export function QuotationManagement({ products, customers, user, onDocumentTypeC
     if (saved) { setPreview({ data: saved, record: saved }); return; }
     try {
       const data = normalizeQuote(form);
-      if (!pricesChecked) throw new Error('Vui lòng xác nhận các đơn giá đã nhập là giá chưa VAT.');
+      if (!pricesChecked) throw new Error('Vui lòng xác nhận giá đã nhập đúng với chế độ VAT đã chọn.');
       setPreview({ data });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Vui lòng kiểm tra thông tin báo giá.');
@@ -303,6 +303,9 @@ export function QuotationManagement({ products, customers, user, onDocumentTypeC
           </div>
         </section>
         <section className="issue-card"><h2>Sản phẩm báo giá</h2>
+          <label className="quotation-check"><input type="checkbox" checked={!!form.pricesIncludeVat}
+            onChange={event => edit({ pricesIncludeVat: event.target.checked }, true)} />Giá đã gồm VAT</label>
+          {form.pricesIncludeVat && <p className="issue-hint">Áp dụng cho toàn bộ báo giá. Chọn VAT để tách thuế từ giá đã nhập; chiết khấu trừ trên giá chưa VAT. Bản in ẩn cột Thành tiền (+VAT).</p>}
           <button type="button" className="issue-button secondary" disabled={form.items.length >= 100}
             onClick={() => edit({ items: [...form.items, {
               productId: '', name: 'Hộp quà Tết tự chọn', unit: 'Hộp', quantity: 1, unitPrice: -1,
@@ -313,7 +316,7 @@ export function QuotationManagement({ products, customers, user, onDocumentTypeC
           {productQuery.trim() && <div className="issue-results">{productMatches.map(p => <button type="button" key={p._id} disabled={form.items.length >= 100} onClick={() => addProduct(p)}>
             <strong>{p.name}</strong><small>{[p.sku || p.barcode, p.unit, p.price > 0 ? money(p.price) + ' đ' : 'Liên hệ'].filter(Boolean).join(' · ')}</small>
           </button>)}{!productMatches.length && <p>Không tìm thấy sản phẩm.</p>}</div>}
-          <div className="issue-lines">{form.items.map((line, index) => <QuoteLineEditor key={index} products={products} line={line} index={index} net={totals.taxable[index]} vat={totals.lineVat[index]} images={products.find(p => p._id === line.productId)?.images || []}
+          <div className="issue-lines">{form.items.map((line, index) => <QuoteLineEditor key={index} products={products} pricesIncludeVat={form.pricesIncludeVat} line={line} index={index} net={totals.taxable[index]} vat={totals.lineVat[index]} images={products.find(p => p._id === line.productId)?.images || []}
             update={changes => edit({ items: form.items.map((item, i) => i === index ? { ...item, ...changes } : item) }, changes.unitPrice !== undefined)}
             remove={() => edit({ items: form.items.filter((_, i) => i !== index) })} />)}</div>
           {totals.subtotal !== null && <div className="quotation-summary">
@@ -322,7 +325,7 @@ export function QuotationManagement({ products, customers, user, onDocumentTypeC
             <Amount label="VAT" value={totals.vat} />
             <Amount label="Tổng có VAT" value={totals.total} />
           </div>}
-          <label className="quotation-check"><input type="checkbox" checked={pricesChecked} onChange={event => { setDraft(prev => ({ ...prev, pricesChecked: event.target.checked })); setError(''); }} />Tôi đã kiểm tra đơn giá từng dòng là giá chưa VAT.</label>
+          <label className="quotation-check"><input type="checkbox" checked={pricesChecked} onChange={event => { setDraft(prev => ({ ...prev, pricesChecked: event.target.checked })); setError(''); }} />{form.pricesIncludeVat ? 'Tôi đã kiểm tra đơn giá từng dòng là giá đã gồm VAT.' : 'Tôi đã kiểm tra đơn giá từng dòng là giá chưa VAT.'}</label>
         </section>
       </fieldset>
       {error && !preview && <div role="alert" className="issue-error">{error}</div>}

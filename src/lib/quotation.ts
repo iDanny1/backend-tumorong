@@ -40,6 +40,7 @@ export interface QuoteLine {
 }
 
 export interface QuoteData {
+  pricesIncludeVat?: boolean;
   companyId: '' | (typeof quoteCompanies)[number]['id'];
   salutation: (typeof quoteSalutations)[number];
   customerName: string;
@@ -75,9 +76,21 @@ export function quoteRequestId(value: unknown): string {
   return value;
 }
 
-export function quotePricing(data: Pick<QuoteData, 'items'>) {
+export function quotePricing(data: Pick<QuoteData, 'items' | 'pricesIncludeVat'>) {
   const priced = data.items.map(item => {
     if (item.quantity == null || item.quantity <= 0 || item.unitPrice < 0) return null;
+    if (data.pricesIncludeVat) {
+      if (item.vatRate < 0) return null;
+      const factor = 1 + item.vatRate / 100;
+      const gross = Math.round(item.quantity * item.unitPrice);
+      const subtotal = Math.round(gross / factor);
+      const productDiscount = Math.round(item.discountType === 'percent' ? subtotal * item.discount / 100 : item.discount);
+      const taxable = Math.max(0, subtotal - productDiscount);
+      // Subtract the tax-inclusive discount from the original price so choosing
+      // a VAT rate never changes an undiscounted tax-inclusive line total.
+      const total = taxable === 0 ? 0 : Math.max(0, gross - Math.round(productDiscount * factor));
+      return { subtotal, productDiscount, taxable: [taxable], vat: total - taxable, total };
+    }
     // Preserve the calculation used by saved quotes from the old pricing model.
     const separate = item.gift?.pricing === 'box-plus-toppings';
     const unitPrice = separate ? item.gift.box.price : item.unitPrice;
@@ -141,7 +154,7 @@ export function isQuoteImageUrl(value: string) {
   } catch { return false; }
 }
 
-function normalizeLine(raw: unknown, index: number): QuoteLine {
+function normalizeLine(raw: unknown, index: number, pricesIncludeVat = false): QuoteLine {
   const row = ' dòng ' + (index + 1);
   const line = record(raw, 'Mặt hàng' + row);
   let gift: TetGift | undefined;
@@ -168,8 +181,8 @@ function normalizeLine(raw: unknown, index: number): QuoteLine {
   if (vatRate === undefined) throw new Error('Chọn VAT 0%, 5%, 8% hoặc 10% ở' + row + '.');
   const discountType = line.discountType;
   if (discountType !== 'amount' && discountType !== 'percent') throw new Error('Chọn đơn vị chiết khấu ở' + row + '.');
-  const discountBase = gift?.pricing === 'box-plus-toppings' ? gift.box.price : unitPrice;
-  const amountLimit = quantity === null ? 999_999_999_999 : Math.round(quantity * discountBase);
+  const discountBase = !pricesIncludeVat && gift?.pricing === 'box-plus-toppings' ? gift.box.price : unitPrice;
+  const amountLimit = quantity === null ? 999_999_999_999 : Math.round(quantity * discountBase / (pricesIncludeVat ? 1 + vatRate / 100 : 1));
   const discount = nonnegative(line.discount, 'Chiết khấu' + row, discountType === 'percent' ? 100 : amountLimit);
   if (discountType === 'amount' && !Number.isInteger(discount)) throw new Error('Chiết khấu' + row + ' phải là số đồng nguyên.');
   const imageUrl = text(line.imageUrl, 'Link hình ảnh' + row, 4096);
@@ -197,13 +210,16 @@ export function normalizeQuote(raw: unknown): QuoteData {
   if (!Array.isArray(input.items) || !input.items.length || input.items.length > 100) {
     throw new Error('Vui lòng thêm từ 1 đến 100 mặt hàng.');
   }
-  const items = input.items.map(normalizeLine);
-  const { lines, taxable, lineVat, subtotal, total } = quotePricing({ items });
+  if (input.pricesIncludeVat !== undefined && typeof input.pricesIncludeVat !== 'boolean') throw new Error('Lựa chọn giá đã gồm VAT không hợp lệ.');
+  const pricesIncludeVat = input.pricesIncludeVat === true;
+  const items = input.items.map((item, index) => normalizeLine(item, index, pricesIncludeVat));
+  const { lines, taxable, lineVat, subtotal, total } = quotePricing({ items, pricesIncludeVat });
   const limit = 999_999_999_999;
   if (subtotal > limit || total > limit || lines.some((gross, i) => gross != null && (gross > limit || taxable[i] + lineVat[i] > limit))) {
     throw new Error('Giá trị báo giá vượt 999.999.999.999 đồng.');
   }
   return {
+    ...(input.pricesIncludeVat !== undefined ? { pricesIncludeVat } : {}),
     companyId: company.id, salutation, customerName,
     customerId: text(input.customerId, 'Mã khách hàng', 150),
     date, validUntil, creator: text(input.creator, 'Người lập báo giá', 200), items,

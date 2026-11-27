@@ -34,6 +34,53 @@ test('quote totals use the quoted quantity, whole-line discounts, mixed VAT and 
   assert.equal(quote.items[0].imageUrl, firstLine.imageUrl);
 });
 
+test('inclusive gift prices preserve the entered total and subtract discounts before VAT', () => {
+  const data = giftSample();
+  data.pricesIncludeVat = true;
+  const item = data.items[0];
+  item.gift = { pricing: 'gift-total', box: { name: 'Box', price: 160000 },
+    toppings: [1980000, 85000, 162000, 125000, 131400].map(price => ({ name: 'Tea', price })) };
+  item.unitPrice = 2643400;
+  item.quantity = 8;
+  item.discount = 0;
+  for (const rate of [0, 5, 8, 10]) {
+    item.vatRate = rate;
+    const normalized = normalizeQuote(data);
+    assert.equal(normalized.pricesIncludeVat, true);
+    assert.equal(normalized.items[0].unitPrice, 2643400);
+    assert.equal(quotePricing(normalized).total, 21147200);
+  }
+  item.vatRate = 10;
+  item.discount = 30000;
+  const amounts = quotePricing(normalizeQuote(data));
+  assert.equal(amounts.productDiscount, 30000);
+  assert.equal(amounts.total, 21114200);
+  assert.equal(amounts.taxable[0], Math.round(21147200 / 1.1) - 30000);
+  assert.equal(amounts.taxable[0] + amounts.vat, amounts.total);
+  item.discountType = 'percent';
+  item.discount = 10;
+  assert.equal(quotePricing(normalizeQuote(data)).productDiscount, Math.round(Math.round(21147200 / 1.1) * .1));
+  item.discount = 100;
+  assert.equal(quotePricing(normalizeQuote(data)).total, 0);
+});
+
+test('inclusive pricing validates net discount limits and handles incomplete rows and rounding', () => {
+  const data = { ...sample(), pricesIncludeVat: true, items: [{ ...firstLine, quantity: 1, unitPrice: 11,
+    vatRate: 10, discountType: 'amount' as const, discount: 0 }] };
+  assert.equal(quotePricing(normalizeQuote(data)).total, 11);
+  data.items[0].discount = 11;
+  assert.throws(() => normalizeQuote(data));
+  data.items[0].discount = 10;
+  assert.equal(quotePricing(normalizeQuote(data)).total, 0);
+  data.items[0].quantity = null;
+  assert.equal(quotePricing(normalizeQuote(data)).total, null);
+  data.items[0].quantity = 1;
+  data.items[0].vatRate = -1;
+  assert.equal(quotePricing(data).total, null);
+  assert.throws(() => normalizeQuote(data));
+  assert.throws(() => normalizeQuote({ ...sample(), pricesIncludeVat: 'true' }));
+});
+
 test('quote validation covers sender, expiry, row prices and image references', () => {
   for (const changes of [
     { companyId: '' }, { companyId: 'other' }, { salutation: '' }, { customerName: ' ' },
@@ -176,6 +223,14 @@ test('quote creation is isolated, idempotent and reprints a frozen seller and pr
   assert.equal(giftHistory.result.items.length, 1);
   assert.equal(giftHistory.result.items[0].items[0].gift.toppings[0].price, 10000);
   assert.equal(quotePricing(giftHistory.result.items[0]).total, 325200);
+  const inclusiveBody = { ...sample(), pricesIncludeVat: true, requestId: 'quote-request-inclusive01' };
+  const inclusiveCreated = await request('POST', inclusiveBody);
+  assert.equal(inclusiveCreated.status, 201);
+  assert.equal(inclusiveCreated.result.pricesIncludeVat, true);
+  assert.equal(records.at(-1).totals.total, quotePricing(normalizeQuote(inclusiveBody)).total);
+  assert.equal((await request('POST', inclusiveBody)).status, 200);
+  const inclusiveHistory = await request('GET', {}, { q: inclusiveCreated.result.number });
+  assert.equal(inclusiveHistory.result.items[0].pricesIncludeVat, true);
 });
 
 test('custom gift quotes preserve repeated toppings, enforce three and verify component prices', () => {

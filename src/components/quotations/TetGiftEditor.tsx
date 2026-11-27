@@ -7,8 +7,8 @@ function key(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').trim().toLowerCase();
 }
 
-export function TetGiftEditor({ gift, products, onChange }: {
-  gift: TetGift; products: Product[]; onChange: (gift: TetGift) => void;
+export function TetGiftEditor({ gift, products, pricesIncludeVat, onChange }: {
+  gift: TetGift; products: Product[]; pricesIncludeVat?: boolean; onChange: (gift: TetGift) => void;
 }) {
   const boxList = useId();
   const [query, setQuery] = useState('');
@@ -34,7 +34,7 @@ export function TetGiftEditor({ gift, products, onChange }: {
           }} />
         <datalist id={boxList}>{Array.from(new Set(['Hộp quà Tết 2027', ...boxes.map(p => p.name)])).map(name => <option key={name} value={name} />)}</datalist>
       </label>
-      <label className="issue-field"><span>Giá hộp chưa VAT (đ)</span>
+      <label className="issue-field"><span>{pricesIncludeVat ? 'Giá hộp đã gồm VAT (đ)' : 'Giá hộp chưa VAT (đ)'}</span>
         {priceInput(gift.box, price => onChange({ ...gift, box: { ...gift.box, price } }))}
         <small>Nhập 0 nếu giá một món đã bao gồm hộp.</small>
       </label>

@@ -35,11 +35,12 @@ function QuoteTotals({ pricing, creator }: { pricing: ReturnType<typeof quotePri
 export function QuotationPaper({ data, number }: { data: PaperData; number?: string }) {
   const issuer = quoteCompanies.find(company => company.id === data.companyId);
   const pricing = quotePricing(data);
+  const showVatTotal = !data.pricesIncludeVat;
   const showQuantity = data.items.some(item => item.quantity != null);
   const showDiscount = data.items.some(item => item.discount > 0);
   const splitDiscount = data.items.some(item => item.discountType === 'percent' && item.discount > 0);
   const weights = [3.5, ...(showQuantity ? [15.5, 5] : [20.5]), 5, 10.5,
-    ...(splitDiscount ? [6, 10] : showDiscount ? [10] : []), 12, 12, 15, 12.5];
+    ...(splitDiscount ? [6, 10] : showDiscount ? [10] : []), 12, ...(showVatTotal ? [12] : []), 15, 12.5];
   const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
   return <article className="quotation-paper" lang="vi" aria-label="Báo giá">
     <header className="quote-paper-header">
@@ -60,6 +61,7 @@ export function QuotationPaper({ data, number }: { data: PaperData; number?: str
       <p className="quote-paper-recipient"><span>Kính gửi:</span> <strong>{data.salutation} {data.customerName}</strong></p>
       <p>Chúng tôi trân trọng gửi Quý khách bảng giá sản phẩm như sau.</p>
     </section>
+    {data.pricesIncludeVat && <p className="quote-paper-info">Đơn giá đã gồm VAT; chiết khấu tính trên giá chưa VAT.</p>}
     <table className="quote-paper-lines" aria-label="Chi tiết sản phẩm">
       <caption>Đơn vị tiền: đồng (VND)</caption>
       <colgroup>{weights.map((weight, index) =>
@@ -67,10 +69,10 @@ export function QuotationPaper({ data, number }: { data: PaperData; number?: str
       <thead><tr>
         <th scope="col">STT</th><th scope="col">Tên sản phẩm</th>
         {showQuantity && <th scope="col">SL</th>}<th scope="col">ĐVT</th>
-        <th scope="col">Đơn giá<br />(-VAT)</th>
+        <th scope="col">Đơn giá<br />{data.pricesIncludeVat ? "(+VAT)" : "(-VAT)"}</th>
         {showDiscount && <th scope={splitDiscount ? 'colgroup' : 'col'} colSpan={splitDiscount ? 2 : 1}>Chiết khấu</th>}
         <th scope="col">Thành tiền <br />(-VAT)</th>
-        <th scope="col">Thành tiền <br />(+VAT)</th>
+        {showVatTotal && <th scope="col">Thành tiền <br />(+VAT)</th>}
         <th scope="col">Hình ảnh</th><th scope="col">Quy cách đóng gói</th>
       </tr></thead>
       {data.items.map((item, index) => <tbody key={index}><tr>
@@ -89,7 +91,7 @@ export function QuotationPaper({ data, number }: { data: PaperData; number?: str
           {item.discount > 0 && money(item.discount)}
         </td>)}
         <td className="quote-paper-numeric">{pricing.taxable[index] != null && money(pricing.taxable[index])}</td>
-        <td className="quote-paper-numeric">{pricing.lineVat[index] != null && money(pricing.taxable[index] + pricing.lineVat[index])}</td>
+        {showVatTotal && <td className="quote-paper-numeric">{pricing.lineVat[index] != null && money(pricing.taxable[index] + pricing.lineVat[index])}</td>}
         <td className="quote-paper-image"><div className="quote-paper-image-frame"><ProductImage key={item.imageUrl} url={item.imageUrl} name={item.name} /></div></td>
         <td className="quote-paper-packaging">{item.packaging || '—'}</td>
       </tr>
