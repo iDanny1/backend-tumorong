@@ -37,7 +37,13 @@ function recoverDraft(key: string, creator: string): Draft {
         ['name', 'unit', 'packaging', 'imageUrl', 'productId', 'discountType'].every(key => typeof line[key] === 'string') &&
         (line.quantity === null || Number.isFinite(line.quantity)) &&
         ['unitPrice', 'discount', 'vatRate'].every(key => Number.isFinite(line[key])))) {
-      return { form, requestId: draft.requestId, pricesChecked: draft.pricesChecked === true };
+      const pricingChanged = form.items.some((line: QuoteLine) => line.gift && line.gift.pricing !== 'gift-total');
+      if (pricingChanged) {
+        form.items = form.items.map((line: QuoteLine) => line.gift
+          ? { ...line, gift: { ...line.gift, pricing: 'gift-total' } } : line);
+      }
+      return { form, requestId: pricingChanged ? crypto.randomUUID() : draft.requestId,
+        pricesChecked: !pricingChanged && draft.pricesChecked === true };
     }
   } catch { /* Local storage may be unavailable. */ }
   return emptyDraft(creator);
@@ -114,7 +120,7 @@ function QuoteLineEditor({ line, index, net, vat, images, products, update, remo
     <div className="issue-section-title"><h3>{index + 1}. {line.gift?.box.name || line.name}{line.gift?.toppings.map(part => part.name).map((name, i) => <span key={i}> + {name}</span>)}</h3>
       <button type="button" className="issue-remove" onClick={remove}><Trash2 size={16} />Bỏ dòng</button></div>
     {line.gift && <TetGiftEditor gift={line.gift} products={products}
-      onChange={gift => update({ gift: { ...gift, pricing: 'box-plus-toppings' }, unitPrice: giftPrice(gift) })} />}
+      onChange={gift => update({ gift: { ...gift, pricing: 'gift-total' }, unitPrice: giftPrice(gift) })} />}
     <div className="quotation-line">
       <div className="quotation-photo">
         {isQuoteImageUrl(line.imageUrl) && failedUrl !== line.imageUrl ? <img key={line.imageUrl} src={line.imageUrl} alt={line.name} referrerPolicy="no-referrer" onError={() => setFailedUrl(line.imageUrl)} /> :
@@ -123,11 +129,11 @@ function QuoteLineEditor({ line, index, net, vat, images, products, update, remo
       <div className="issue-line-grid">
         <Field name="ĐVT"><input value={line.unit} onChange={event => update({ unit: event.target.value })} placeholder="Hộp, chai…" /></Field>
         <Field name="Số lượng"><input type="number" min="0.001" step="any" placeholder="Có thể để trống" value={line.quantity ?? ''} onChange={event => update({ quantity: event.target.value === '' ? null : Number(event.target.value) })} /></Field>
-        <Field name={line.gift?.pricing ? 'Giá hộp + topping (chưa cộng VAT của hộp)' : 'Đơn giá chưa VAT (đ)'}><input type="number" readOnly={!!line.gift} min="0" step="1" placeholder={line.gift ? 'Chờ đủ giá thành phần' : 'Nhập đơn giá'} value={line.unitPrice < 0 ? '' : line.unitPrice} onChange={event => update({ unitPrice: event.target.value === '' ? -1 : Number(event.target.value) })} /></Field>
-        <Field name={line.gift?.pricing ? 'VAT của hộp' : 'VAT'}><select aria-label="VAT" value={line.vatRate} onChange={event => update({ vatRate: Number(event.target.value) })}>
+        <Field name={line.gift ? 'Giá hộp + topping chưa VAT (đ)' : 'Đơn giá chưa VAT (đ)'}><input type="number" readOnly={!!line.gift} min="0" step="1" placeholder={line.gift ? 'Chờ đủ giá thành phần' : 'Nhập đơn giá'} value={line.unitPrice < 0 ? '' : line.unitPrice} onChange={event => update({ unitPrice: event.target.value === '' ? -1 : Number(event.target.value) })} /></Field>
+        <Field name={line.gift ? 'VAT hộp + topping' : 'VAT'}><select aria-label="VAT" value={line.vatRate} onChange={event => update({ vatRate: Number(event.target.value) })}>
           <option value={-1}>Chọn VAT</option>{quoteVatRates.map(rate => <option key={rate} value={rate}>{rate}%</option>)}
         </select></Field>
-        <Field name={line.gift?.pricing ? 'Chiết khấu của hộp' : 'Chiết khấu'}><input type="number" min="0" step={line.discountType === 'amount' ? 1 : 0.01} value={line.discount} onChange={event => update({ discount: Number(event.target.value) })} /></Field>
+        <Field name={line.gift ? 'Chiết khấu hộp + topping' : 'Chiết khấu'}><input type="number" min="0" step={line.discountType === 'amount' ? 1 : 0.01} value={line.discount} onChange={event => update({ discount: Number(event.target.value) })} /></Field>
         <Field name="Đơn vị chiết khấu"><select value={line.discountType} onChange={event => update({ discountType: event.target.value as QuoteLine['discountType'], discount: 0 })}>
           <option value="amount">đ / dòng</option><option value="percent">%</option>
         </select></Field>
@@ -301,7 +307,7 @@ export function QuotationManagement({ products, customers, user, onDocumentTypeC
             onClick={() => edit({ items: [...form.items, {
               productId: '', name: 'Hộp quà Tết tự chọn', unit: 'Hộp', quantity: 1, unitPrice: -1,
               vatRate: -1, discount: 0, discountType: 'amount', packaging: '', imageUrl: '',
-              gift: { pricing: 'box-plus-toppings', box: { name: '', price: -1 }, toppings: [] },
+              gift: { pricing: 'gift-total', box: { name: '', price: -1 }, toppings: [] },
             }] }, true)}><Plus size={16} />Thêm quà Tết</button>
           <Field name="Tìm sản phẩm"><input type="search" value={productQuery} onChange={event => setProductQuery(event.target.value)} placeholder="Tên sản phẩm, SKU hoặc mã vạch" /></Field>
           {productQuery.trim() && <div className="issue-results">{productMatches.map(p => <button type="button" key={p._id} disabled={form.items.length >= 100} onClick={() => addProduct(p)}>

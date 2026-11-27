@@ -218,6 +218,51 @@ function giftSample(): QuoteData {
   }] };
 }
 
+test('gift-total applies VAT to the entire box and all toppings', () => {
+  const data = giftSample();
+  const item = data.items[0];
+  item.gift = { pricing: 'gift-total', box: { name: 'Box', price: 160000 },
+    toppings: [1980000, 85000, 162000, 125000, 107000].map(price => ({ name: 'Topping', price })) };
+  item.unitPrice = 2619000;
+  item.quantity = 1;
+  item.discount = 0;
+  item.vatRate = 10;
+  const normalized = normalizeQuote(data);
+  assert.equal(normalized.items[0].gift!.pricing, 'gift-total');
+  assert.deepEqual(quotePricing(normalized).lineVat, [261900]);
+  assert.equal(quotePricing(normalized).total, 2880900);
+  item.discountType = 'percent';
+  item.discount = 10;
+  const discounted = quotePricing(normalizeQuote(data));
+  assert.equal(discounted.productDiscount, 261900);
+  assert.deepEqual(discounted.taxable, [2357100]);
+  assert.equal(discounted.vat, 235710);
+  assert.equal(discounted.total, 2592810);
+});
+
+test('gift-total discounts the full line before VAT and permits discounts above the box price', () => {
+  const data = giftSample();
+  const item = data.items[0];
+  item.gift!.pricing = 'gift-total';
+  item.discount = 250000;
+  const pricing = quotePricing(normalizeQuote(data));
+  assert.deepEqual(pricing.lines, [320000]);
+  assert.deepEqual(pricing.taxable, [70000]);
+  assert.equal(pricing.vat, 5600);
+  assert.equal(pricing.total, 75600);
+  item.discount = 320001;
+  assert.throws(() => normalizeQuote(data));
+  item.discountType = 'percent';
+  item.discount = 100;
+  assert.equal(quotePricing(normalizeQuote(data)).total, 0);
+  item.gift!.box.price = 0;
+  item.unitPrice = 60000;
+  item.discount = 0;
+  assert.equal(quotePricing(normalizeQuote(data)).vat, 9600);
+  item.quantity = null;
+  assert.equal(quotePricing(normalizeQuote(data)).total, null);
+});
+
 test('gift amount discount applies once per line and toppings scale with box quantity', () => {
   const data = giftSample();
   const pricing = quotePricing(normalizeQuote(data));

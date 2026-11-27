@@ -14,7 +14,7 @@ export interface GiftPart {
   price: number;
 }
 export interface TetGift {
-  pricing?: 'box-plus-toppings';
+  pricing?: 'box-plus-toppings' | 'gift-total';
   box: GiftPart;
   toppings: GiftPart[];
 }
@@ -78,6 +78,7 @@ export function quoteRequestId(value: unknown): string {
 export function quotePricing(data: Pick<QuoteData, 'items'>) {
   const priced = data.items.map(item => {
     if (item.quantity == null || item.quantity <= 0 || item.unitPrice < 0) return null;
+    // Preserve the calculation used by saved quotes from the old pricing model.
     const separate = item.gift?.pricing === 'box-plus-toppings';
     const unitPrice = separate ? item.gift.box.price : item.unitPrice;
     const priced = stockIssuePricing({ items: [{ ...item, quantity: item.quantity, unitPrice }], vatRate: 0 });
@@ -156,7 +157,7 @@ function normalizeLine(raw: unknown, index: number): QuoteLine {
       throw new Error('Mỗi hộp quà Tết cần ít nhất 3 topping' + row + '.');
     }
     gift = { box: part(config.box, 'mẫu hộp'), toppings: config.toppings.map(t => part(t, 'topping')) };
-    if (config.pricing === 'box-plus-toppings') gift.pricing = config.pricing;
+    if (config.pricing === 'box-plus-toppings' || config.pricing === 'gift-total') gift.pricing = config.pricing;
     if (line.unitPrice !== giftPrice(gift)) throw new Error('Đơn giá hộp phải bằng tổng giá hộp và các topping.');
   }
   const quantity = line.quantity == null || line.quantity === '' ? null : nonnegative(line.quantity, 'Số lượng' + row, 1_000_000);

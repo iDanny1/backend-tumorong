@@ -56,7 +56,7 @@ test('gift quote shows each topping name and only the combined price', () => {
   const html = renderToStaticMarkup(<QuotationPaper data={data} />);
   const name = html.match(/<td class="quote-paper-name">([\s\S]*?)<\/td>/)?.[1] || '';
   assert.ok(name.includes('Spring box'));
-  assert.equal((name.match(/<div>Tea<\/div>/g) || []).length, 3);
+  assert.equal((name.match(/<div>- Tea<\/div>/g) || []).length, 3);
   assert.doesNotMatch(name, /100|200|300/);
   assert.match(html, />700</);
   assert.match(html, /class="quote-paper-packaging">Red wrap<\/td>/);

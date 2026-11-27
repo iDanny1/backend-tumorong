@@ -77,7 +77,7 @@ export function QuotationPaper({ data, number }: { data: PaperData; number?: str
         <td className="quote-paper-center">{index + 1}</td>
         <td className="quote-paper-name">{item.gift ? <>
           <strong>{item.gift.box.name}</strong>
-          {item.gift.toppings.map((part, i) => <div key={i}>{part.name}</div>)}
+          {item.gift.toppings.map((part, i) => <div key={i}>- {part.name}</div>)}
         </> : item.name}</td>
         {showQuantity && <td className="quote-paper-center">{item.quantity?.toLocaleString('vi-VN', { maximumFractionDigits: 20 })}</td>}
         <td className="quote-paper-center">{item.unit}</td>
