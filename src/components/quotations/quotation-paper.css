@@ -36,7 +36,8 @@
 .quote-paper-name, .quote-paper-packaging { white-space: pre-line; }
 .quote-paper-center, .quote-paper-image, .quote-paper-packaging { text-align: center; }
 .quote-paper-lines .quote-paper-image { padding: .8mm; }
-.quote-paper-image img { width: 100%; height: 32mm; display: block; object-fit: contain; }
+.quote-paper-image-frame { width: 100%; height: 32mm; display: grid; place-items: center; overflow: hidden; }
+.quote-paper-image img { width: 100%; max-width: 100%; height: 32mm; max-height: 100%; min-width: 0; display: block; object-fit: contain; object-position: center; }
 .quote-paper-image-note { color: #555; font-size: 8pt; }
 .quote-paper-numeric { text-align: right; font-variant-numeric: tabular-nums; }
 .quote-paper-numeric small { display: block; margin-top: .8mm; font-size: 7.8pt; }

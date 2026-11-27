@@ -90,7 +90,7 @@ export function QuotationPaper({ data, number }: { data: PaperData; number?: str
         </td>)}
         <td className="quote-paper-numeric">{pricing.taxable[index] != null && money(pricing.taxable[index])}</td>
         <td className="quote-paper-numeric">{pricing.lineVat[index] != null && money(pricing.taxable[index] + pricing.lineVat[index])}</td>
-        <td className="quote-paper-image"><ProductImage key={item.imageUrl} url={item.imageUrl} name={item.name} /></td>
+        <td className="quote-paper-image"><div className="quote-paper-image-frame"><ProductImage key={item.imageUrl} url={item.imageUrl} name={item.name} /></div></td>
         <td className="quote-paper-packaging">{item.packaging || '—'}</td>
       </tr>
       {index === data.items.length - 1 && pricing.total !== null && <tr><td colSpan={weights.length} className="quote-paper-summary-cell">

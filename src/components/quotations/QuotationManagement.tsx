@@ -117,7 +117,7 @@ function QuoteLineEditor({ line, index, net, vat, images, products, update, remo
       onChange={gift => update({ gift: { ...gift, pricing: 'box-plus-toppings' }, unitPrice: giftPrice(gift) })} />}
     <div className="quotation-line">
       <div className="quotation-photo">
-        {line.imageUrl && failedUrl !== line.imageUrl ? <img src={line.imageUrl} alt={line.name} referrerPolicy="no-referrer" onError={() => setFailedUrl(line.imageUrl)} /> :
+        {isQuoteImageUrl(line.imageUrl) && failedUrl !== line.imageUrl ? <img key={line.imageUrl} src={line.imageUrl} alt={line.name} referrerPolicy="no-referrer" onError={() => setFailedUrl(line.imageUrl)} /> :
           <span>{line.imageUrl ? 'Ảnh chưa tải được' : 'Chưa có ảnh'}</span>}
       </div>
       <div className="issue-line-grid">
@@ -138,6 +138,12 @@ function QuoteLineEditor({ line, index, net, vat, images, products, update, remo
           <option value="">Không dùng ảnh</option>
           {photos.map((url, i) => <option key={url} value={url}>Ảnh {i + 1}</option>)}
         </select></Field></div>
+        {line.gift && <div className="issue-wide"><Field name="Link ảnh quà Tết">
+          <input type="url" maxLength={4096} value={line.imageUrl} placeholder="Dán link ảnh https://..."
+            onChange={event => { setFailedUrl(''); update({ imageUrl: event.target.value.trim() }); }} />
+          <small>Dán link trực tiếp đến ảnh. Ảnh sẽ tự co vừa khung trên báo giá.</small>
+          {line.imageUrl && !isQuoteImageUrl(line.imageUrl) && <small role="alert">Vui lòng nhập link ảnh HTTP hoặc HTTPS hợp lệ.</small>}
+        </Field></div>}
       </div>
     </div>
   </section>;
