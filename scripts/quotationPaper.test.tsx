@@ -62,7 +62,7 @@ test('gift quote shows each topping name and only the combined price', () => {
   assert.match(html, /class="quote-paper-packaging">Red wrap<\/td>/);
 });
 
-test('inclusive quote paper hides the VAT total column and keeps table columns aligned', () => {
+test('inclusive quote paper shows both net and VAT totals and keeps table columns aligned', () => {
   for (const quantity of [null, 8]) {
     for (const discountType of ['amount', 'percent'] as const) {
       const data: QuoteData = { ...freshQuote(), pricesIncludeVat: true, items: [{
@@ -70,10 +70,11 @@ test('inclusive quote paper hides the VAT total column and keeps table columns a
         discount: 10, discountType, vatRate: 10, imageUrl: '', packaging: '',
       }] };
       const html = renderToStaticMarkup(<QuotationPaper data={data} />);
-      assert.doesNotMatch(html, /Thành tiền <br\s*\/?>\(\+VAT\)/);
+      assert.match(html, /Thành tiền <br\s*\/?>\(\+VAT\)/);
+      assert.match(html, /Thành tiền <br\s*\/?>\(-VAT\)/);
       assert.match(html, /Đơn giá<br\s*\/?>\(\+VAT\)/);
       assert.match(html, /2\.643\.400/);
-      const count = (quantity == null ? 8 : 9) + (discountType === 'percent' ? 1 : 0);
+      const count = (quantity == null ? 9 : 10) + (discountType === 'percent' ? 1 : 0);
       assert.equal((html.match(/<col style=/g) || []).length, count);
       assert.equal((html.match(/<td /g) || []).length, count + (quantity == null ? 0 : 1));
       if (quantity != null) assert.match(html, new RegExp(`colSpan="${count}" class="quote-paper-summary-cell"`));

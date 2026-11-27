@@ -305,7 +305,7 @@ export function QuotationManagement({ products, customers, user, onDocumentTypeC
         <section className="issue-card"><h2>Sản phẩm báo giá</h2>
           <label className="quotation-check"><input type="checkbox" checked={!!form.pricesIncludeVat}
             onChange={event => edit({ pricesIncludeVat: event.target.checked }, true)} />Giá đã gồm VAT</label>
-          {form.pricesIncludeVat && <p className="issue-hint">Áp dụng cho toàn bộ báo giá. Chọn VAT để tách thuế từ giá đã nhập; chiết khấu trừ trên giá chưa VAT. Bản in ẩn cột Thành tiền (+VAT).</p>}
+          {form.pricesIncludeVat && <p className="issue-hint">Áp dụng cho toàn bộ báo giá. Chọn VAT để tách thuế từ giá đã nhập; chiết khấu trừ trên giá chưa VAT.</p>}
           <button type="button" className="issue-button secondary" disabled={form.items.length >= 100}
             onClick={() => edit({ items: [...form.items, {
               productId: '', name: 'Hộp quà Tết tự chọn', unit: 'Hộp', quantity: 1, unitPrice: -1,
