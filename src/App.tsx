@@ -63,7 +63,7 @@ export default function App() {
   const canManageContracts = ['admin', 'sales'].includes(user?.role.toLowerCase() ?? '');
   const showContracts = canManageContracts && activeMenu === 'Hợp đồng';
 
-  const [warehouseDocument, setWarehouseDocument] = useState<{ type: 'receipt' | 'stock-issue'; warehouse?: Warehouse; documentOnly?: boolean } | null>(null);
+  const [warehouseDocument, setWarehouseDocument] = useState<{ type: 'receipt' | 'stock-issue'; warehouse: Warehouse } | null>(null);
   const [newProduct, setNewProduct] = useState({
     name: '',
     unit: '',
@@ -467,7 +467,6 @@ export default function App() {
         <WarehouseManagement 
           products={products} 
           onRefresh={fetchProducts}
-          onCreateDocument={() => { setWarehouseDocument({ type: 'stock-issue', documentOnly: true }); navigateMenu('Xuất phiếu'); }}
           onDocument={(type, warehouse) => { setWarehouseDocument({ type, warehouse }); navigateMenu('Xuất phiếu'); }}
         />
       );

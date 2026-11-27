@@ -15,7 +15,7 @@ import { warehouseAddress } from '../../lib/warehouse';
 type Props = {
   products: Product[]; customers: Customer[]; user: User; orders?: Order[];
   onCustomersChanged?: () => void | Promise<void>; onInventoryChanged?: () => void | Promise<void>;
-  warehouseDocument?: { type: 'receipt' | 'stock-issue'; warehouse?: Warehouse; documentOnly?: boolean } | null;
+  warehouseDocument?: { type: 'receipt' | 'stock-issue'; warehouse: Warehouse } | null;
 };
 const documentName = (type: StockIssueData['documentType']) =>
   type === 'handover' ? 'Biên bản bàn giao' : type === 'receipt' ? 'Phiếu nhập kho' : 'Phiếu xuất kho';
@@ -51,9 +51,7 @@ export function StockIssueManagement({ products, customers, user, orders = [], o
   const canPost = user.role === 'admin' || user.role === 'warehouse';
   const [fromWarehouse] = useState<StockIssueData | undefined>(() => {
     if (!warehouseDocument) return;
-    const { type, warehouse, documentOnly } = warehouseDocument;
-    if (documentOnly) return { ...freshIssue(user.name), documentOnly: true, documentType: type, reason: reasons[type] };
-    if (!warehouse) return;
+    const { type, warehouse } = warehouseDocument;
     return { ...freshIssue(user.name), documentType: type, reason: reasons[type], warehouseId: warehouse._id,
       warehouseName: warehouse.name, warehouseLocation: warehouseAddress(warehouse), ...(type === 'receipt' && { creditAccount: '', debitAccount: '' }) };
   });
@@ -282,7 +280,8 @@ export function StockIssueManagement({ products, customers, user, orders = [], o
     <header className="issue-heading"><div><div className="issue-eyebrow">XUẤT PHIẾU</div><h1>{documentName(form.documentType)}</h1><p>{documentOnly ? 'Phiếu không gắn kho: lưu và in, không thay đổi tồn kho.' : receipt ? 'Ghi sổ để cộng hàng vào kho nhận.' : form.sourceIssueId || form.sourceOrderId ? 'Chứng từ liên kết với lần xuất hàng đã ghi nhận.' : 'Ghi sổ để trừ hàng tại kho xuất.'}</p></div><button type="button" className="issue-button secondary" onClick={() => { setView(view === 'form' ? 'history' : 'form'); setError(''); }}><FileText size={20} />{view === 'form' ? 'Phiếu đã lưu' : 'Về phiếu đang lập'}</button></header>
     {syncStatus && <p role="status" className={syncStatus.state === 'error' ? 'issue-error' : 'issue-draft'}><strong>Kết nối AppSheet: </strong>{syncStatus.message}</p>}
     <div className="issue-current-actions">
-      <button type="button" className="issue-button secondary" disabled={saving} onClick={() => beginNew()}><Plus size={18} />Tạo phiếu mới</button>
+      <button type="button" className="issue-button secondary" disabled={saving} onClick={() => beginNew(freshIssue(user.name))}><Plus size={18} />Tạo phiếu mới</button>
+      <button type="button" className="issue-button secondary" disabled={saving} onClick={() => beginNew({ ...freshIssue(user.name), documentOnly: true })}><Plus size={18} />Tạo phiếu không gắn kho</button>
       <button type="button" className="issue-button danger" disabled={saving} onClick={() => setPendingAction({ kind: 'delete' })}><Trash2 size={18} />Xóa phiếu hiện tại</button>
       <button type="button" className="issue-button secondary" disabled={catalogLoading} onClick={() => { void refreshCatalog(); refreshCustomers(); }}>{catalogLoading ? 'Đang tải danh mục…' : 'Tải lại danh mục'}</button>
     </div>
