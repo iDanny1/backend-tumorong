@@ -750,19 +750,6 @@ export const contractTemplates: ContractTemplate[] = [
     articles: [
       {
         id: "article-1",
-
-
-
-
-
-
-
-
-
-
-
-
-        
         title: "Giải thích từ ngữ và Thứ tự ưu tiên áp dụng hồ sơ",
         paragraphs: [],
         children: [

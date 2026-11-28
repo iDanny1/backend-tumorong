@@ -78,6 +78,10 @@ test('inclusive quote paper shows the full unit-price breakdown and keeps thirte
       assert.match(html, /quotation-paper-wide/);
       assert.match(html, /Đơn giá<br\s*\/?>\(\+VAT\)/);
       assert.match(html, /2\.643\.400/);
+      assert.match(html, /2\.403\.091/);
+      for (const cell of html.matchAll(/<td class="quote-paper-numeric[^\"]*">([^<]*)<\/td>/g)) {
+        assert.doesNotMatch(cell[1], /,/, 'VND amounts must display whole dong');
+      }
       const count = discountType === 'percent' ? 14 : 13;
       assert.equal((html.match(/<col style=/g) || []).length, count);
       assert.equal((html.match(/<td /g) || []).length, count + (quantity == null ? 0 : 1));

@@ -4,7 +4,7 @@ import { money, moneyInWords } from '../../lib/stockIssue';
 
 type PaperData = QuoteData & { companyName?: string; companyAddress?: string };
 
-const unitMoney = (value: number) => value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+const unitMoney = (value: number) => money(Math.round(value));
 
 // Format a calendar date without introducing a time zone conversion.
 function paperDate(value: string) {
