@@ -52,6 +52,7 @@ export interface QuoteData {
 }
 
 export interface SavedQuote extends QuoteData {
+  revision?: string;
   _id: string;
   number: string;
   requestId: string;

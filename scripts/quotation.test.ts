@@ -98,8 +98,8 @@ test('quote validation covers sender, expiry, row prices and image references', 
 });
 
 // Exercise the mounted Express router with isolated Mongoose methods. No database or socket is needed.
-function request(method: string, body: unknown = {}, query: Record<string, string> = {}) {
-  const req = { method, url: '/', body, query } as Request;
+function request(method: string, body: unknown = {}, query: Record<string, string> = {}, url = '/') {
+  const req = { method, url, body, query } as Request;
   return new Promise<{ status: number; result: any }>((resolve, reject) => {
     let status = 200;
     const res = {
@@ -231,6 +231,62 @@ test('quote creation is isolated, idempotent and reprints a frozen seller and pr
   assert.equal((await request('POST', inclusiveBody)).status, 200);
   const inclusiveHistory = await request('GET', {}, { q: inclusiveCreated.result.number });
   assert.equal(inclusiveHistory.result.items[0].pricesIncludeVat, true);
+});
+
+test('saved quote updates preserve identity, validate data and reject stale edits', async context => {
+  const customers = mockDocumentCustomers(context);
+  const Quote = mongoose.model('Quotation');
+  let doc: any = { _id: new mongoose.Types.ObjectId(), number: 'BG20261118-0001',
+    requestId: 'original-request-0001', data: normalizeQuote(giftSample()),
+    companyName: 'Original company snapshot', companyAddress: 'Original address', createdAt: new Date('2026-11-18') };
+  const url = `/${doc._id}`;
+  let writes = 0;
+  let concurrentWrite = false;
+  context.mock.method(Quote, 'findById', (id: string) => ({ lean: async () => String(doc._id) === id ? structuredClone(doc) : null }));
+  context.mock.method(Quote, 'findOneAndUpdate', async (filter: any, update: any) => {
+    if (concurrentWrite || (doc.revision ? filter.revision !== doc.revision : filter.revision.$exists !== false)) return null;
+    writes++;
+    doc = { ...doc, ...update.$set };
+    return doc;
+  });
+  const body = { ...giftSample(), requestId: 'update-request-00001', baseRequestId: doc.requestId,
+    customerName: 'Updated customer', date: '2026-11-19', number: 'FORGED', companyName: 'FORGED' };
+  body.items[0].quantity = 5;
+  body.items[0].gift!.toppings[0].name = 'Updated topping';
+  assert.deepEqual(routeRoles('PUT', `/api/quotations/${doc._id}`), ['admin', 'sales', 'warehouse']);
+  const result = await request('PUT', body, {}, url);
+  assert.equal(result.status, 200);
+  assert.equal(result.result._id, String(doc._id));
+  assert.equal(result.result.number, 'BG20261118-0001');
+  assert.equal(result.result.requestId, 'original-request-0001');
+  assert.equal(result.result.revision, body.requestId);
+  assert.equal(result.result.createdAt, '2026-11-18T00:00:00.000Z');
+  assert.equal(result.result.companyName, 'Original company snapshot');
+  assert.equal(result.result.date, '2026-11-19');
+  assert.equal(result.result.items[0].gift.toppings[0].name, 'Updated topping');
+  assert.equal(result.result.items[0].gift.pricing, 'box-plus-toppings');
+  assert.deepEqual(doc.totals, quotePricing(normalizeQuote(body)));
+  assert.equal(customers.records[0].name, 'Updated customer');
+  assert.equal((await request('PUT', body, {}, url)).status, 200, 'Retry succeeds without another write');
+  assert.equal(writes, 1);
+  assert.equal((await request('PUT', { ...body, customerName: 'Different retry' }, {}, url)).status, 409);
+  assert.equal((await request('PUT', { ...body, requestId: 'stale-update-00001' }, {}, url)).status, 409);
+  assert.equal((await request('PUT', { ...body, items: [] }, {}, url)).status, 400);
+  assert.equal((await request('PUT', body, {}, '/invalid')).status, 400);
+  assert.equal((await request('PUT', body, {}, `/${new mongoose.Types.ObjectId()}`)).status, 404);
+  assert.equal(writes, 1);
+
+  const next = { ...body, baseRequestId: doc.revision, requestId: 'update-request-00002', companyId: 'atuagin' };
+  concurrentWrite = true;
+  assert.equal((await request('PUT', next, {}, url)).status, 409, 'Atomic filter rejects a concurrent change');
+  concurrentWrite = false;
+  customers.fail();
+  assert.equal((await request('PUT', next, {}, url)).status, 503);
+  assert.equal(writes, 2);
+  assert.match(doc.companyName, /ATUAGIN/);
+  customers.recover();
+  assert.equal((await request('PUT', next, {}, url)).status, 200);
+  assert.equal(writes, 2, 'Retry after customer sync failure keeps the saved update');
 });
 
 test('custom gift quotes preserve repeated toppings, enforce three and verify component prices', () => {

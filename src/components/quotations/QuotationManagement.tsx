@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, FileText, Plus, Printer, Trash2 } from 'lucide-react';
+import { ChevronLeft, FileText, Pencil, Plus, Printer, Trash2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { freshQuote, isQuoteImageUrl, normalizeQuote, quoteCompanies, quotePricing, quoteSalutations, quoteVatRates, type QuoteData, type QuoteLine, type SavedQuote } from '../../lib/quotation';
 import { money } from '../../lib/stockIssue';
@@ -20,7 +20,7 @@ type Props = {
   onCustomersChanged?: () => void | Promise<void>;
   onDocumentTypeChange: (type: 'stock-issue' | 'receipt' | 'handover') => void;
 };
-type Draft = { form: QuoteData; requestId: string; pricesChecked: boolean };
+type Draft = { form: QuoteData; requestId: string; pricesChecked: boolean; editing?: SavedQuote };
 type Preview = { data: QuoteData; record?: SavedQuote };
 
 function emptyDraft(creator: string): Draft {
@@ -37,12 +37,14 @@ function recoverDraft(key: string, creator: string): Draft {
         ['name', 'unit', 'packaging', 'imageUrl', 'productId', 'discountType'].every(key => typeof line[key] === 'string') &&
         (line.quantity === null || Number.isFinite(line.quantity)) &&
         ['unitPrice', 'discount', 'vatRate'].every(key => Number.isFinite(line[key])))) {
-      const pricingChanged = form.items.some((line: QuoteLine) => line.gift && line.gift.pricing !== 'gift-total');
+      const editing = draft.editing && /^[a-f\d]{24}$/i.test(draft.editing._id)
+        && typeof draft.editing.requestId === 'string' ? draft.editing as SavedQuote : undefined;
+      const pricingChanged = !editing && form.items.some((line: QuoteLine) => line.gift && line.gift.pricing !== 'gift-total');
       if (pricingChanged) {
         form.items = form.items.map((line: QuoteLine) => line.gift
           ? { ...line, gift: { ...line.gift, pricing: 'gift-total' } } : line);
       }
-      return { form, requestId: pricingChanged ? crypto.randomUUID() : draft.requestId,
+      return { form, editing, requestId: pricingChanged ? crypto.randomUUID() : draft.requestId,
         pricesChecked: !pricingChanged && draft.pricesChecked === true };
     }
   } catch { /* Local storage may be unavailable. */ }
@@ -120,7 +122,7 @@ function QuoteLineEditor({ line, index, net, vat, images, products, pricesInclud
     <div className="issue-section-title"><h3>{index + 1}. {line.gift?.box.name || line.name}{line.gift?.toppings.map(part => part.name).map((name, i) => <span key={i}> + {name}</span>)}</h3>
       <button type="button" className="issue-remove" onClick={remove}><Trash2 size={16} />Bỏ dòng</button></div>
     {line.gift && <TetGiftEditor gift={line.gift} products={products} pricesIncludeVat={pricesIncludeVat}
-      onChange={gift => update({ gift: { ...gift, pricing: 'gift-total' }, unitPrice: giftPrice(gift) })} />}
+      onChange={gift => update({ gift, unitPrice: giftPrice(gift) })} />}
     <div className="quotation-line">
       <div className="quotation-photo">
         {isQuoteImageUrl(line.imageUrl) && failedUrl !== line.imageUrl ? <img key={line.imageUrl} src={line.imageUrl} alt={line.name} referrerPolicy="no-referrer" onError={() => setFailedUrl(line.imageUrl)} /> :
@@ -176,7 +178,7 @@ async function waitForPrintAssets(root: HTMLElement) {
 export function QuotationManagement({ products, customers, user, onDocumentTypeChange, onCustomersChanged }: Props) {
   const storageKey = `quotation-draft-v1:${user.username}`;
   const [draft, setDraft] = useState(() => recoverDraft(storageKey, user.name));
-  const { form, requestId, pricesChecked } = draft;
+  const { form, requestId, pricesChecked, editing } = draft;
   const [saved, setSaved] = useState<SavedQuote | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [history, setHistory] = useState(false);
@@ -211,7 +213,7 @@ export function QuotationManagement({ products, customers, user, onDocumentTypeC
   }, [storageKey, draft, saved, user.name, form]);
 
   function edit(changes: Partial<QuoteData>, resetPrices = false) {
-    setDraft(prev => ({ form: { ...prev.form, ...changes }, requestId: crypto.randomUUID(), pricesChecked: prev.pricesChecked && !resetPrices }));
+    setDraft(prev => ({ ...prev, form: { ...prev.form, ...changes }, requestId: crypto.randomUUID(), pricesChecked: prev.pricesChecked && !resetPrices }));
     setError('');
   }
   function addProduct(product: Product) {
@@ -227,6 +229,18 @@ export function QuotationManagement({ products, customers, user, onDocumentTypeC
     if (!saved && JSON.stringify(form) !== JSON.stringify(freshQuote(user.name)) && !window.confirm('Bỏ bản nháp đang soạn để lập báo giá mới?')) return;
     setDraft(emptyDraft(user.name));
     setSaved(null); setHistory(false); setError(''); setProductQuery(''); setCustomerQuery('');
+  }
+  function startEditing(record: SavedQuote) {
+    if (!saved && JSON.stringify(form) !== JSON.stringify(freshQuote(user.name))
+      && !window.confirm('Bỏ bản nháp đang soạn để sửa báo giá này?')) return;
+    const { _id, number, requestId: originalRequestId, revision, companyName, companyAddress, createdAt, ...data } = record;
+    setDraft({ form: structuredClone(data), editing: record, requestId: crypto.randomUUID(), pricesChecked: false });
+    setSaved(null); setPreview(null); setHistory(false); setError(''); setProductQuery(''); setCustomerQuery('');
+  }
+  function cancelEditing() {
+    if (!editing || !window.confirm('Bỏ các thay đổi chưa lưu của báo giá này?')) return;
+    setDraft({ form: editing, requestId: editing.requestId, pricesChecked: true });
+    setSaved(editing); setError('');
   }
   function openPreview() {
     setError('');
@@ -246,8 +260,11 @@ export function QuotationManagement({ products, customers, user, onDocumentTypeC
     setBusy(true); setError('');
     try {
       if (!preview.record) {
-        const record: SavedQuote = await api.post('/api/quotations', { ...preview.data, requestId });
+        const record: SavedQuote = editing
+          ? await api.put(`/api/quotations/${editing._id}`, { ...preview.data, requestId, baseRequestId: editing.revision || editing.requestId })
+          : await api.post('/api/quotations', { ...preview.data, requestId });
         setSaved(record); setPreview({ data: record, record });
+        setDraft({ form: record, requestId: record.requestId, pricesChecked: true });
         void Promise.resolve().then(() => onCustomersChanged?.()).catch(() => {});
       }
       if (print) {
@@ -271,6 +288,7 @@ export function QuotationManagement({ products, customers, user, onDocumentTypeC
     <header className="issue-heading">
       <h1>Báo giá tùy chỉnh</h1>
       <div className="quotation-buttons">
+        {saved && <button className="issue-button secondary" onClick={() => startEditing(saved)}><Pencil size={18} />Sửa báo giá</button>}
         <button className="issue-button secondary" onClick={newQuote}><Plus size={18} />Lập báo giá mới</button>
         <button className="issue-button secondary" onClick={() => { setHistory(!history); setError(''); }}><FileText size={18} />{history ? 'Về báo giá đang lập' : 'Báo giá đã lưu'}</button>
       </div>
@@ -281,6 +299,11 @@ export function QuotationManagement({ products, customers, user, onDocumentTypeC
     {history ? <QuoteHistory onOpen={record => { setPreview({ data: record, record }); setError(''); }} /> : <>
       {storageNotice && <p className="issue-error" role="alert">{storageNotice}</p>}
       {saved && <p className="issue-success" role="status">Đã lưu báo giá {saved.number}.</p>}
+      {editing && <div className="issue-card" role="status">
+        <div className="issue-section-title"><h2>Đang sửa báo giá {editing.number}</h2>
+          <button className="issue-button secondary" onClick={cancelEditing}>Hủy chỉnh sửa</button></div>
+        <p className="issue-hint">Lưu cập nhật sẽ giữ nguyên số báo giá hiện tại.</p>
+      </div>}
       <fieldset className="issue-form-fields" disabled={!!saved}>
         <section className="issue-card"><h2>Thông tin báo giá</h2>
           <div className="issue-grid">
@@ -344,13 +367,15 @@ export function QuotationManagement({ products, customers, user, onDocumentTypeC
       }}>
       <div className="issue-preview-toolbar quotation-print-hide">
         <button autoFocus className="issue-button secondary" disabled={busy} onClick={() => { setPreview(null); setError(''); }}><ChevronLeft size={18} />Quay lại</button>
-        <div><strong>{preview.record?.number || 'Xem trước báo giá'}</strong><small>{preview.data.pricesIncludeVat ? 'A4 ngang' : 'A4 dọc'} · Chọn “Lưu dưới dạng PDF” trong cửa sổ in.</small></div>
-        <div className="issue-preview-actions">{!preview.record && <button className="issue-button secondary" disabled={busy} onClick={() => finish(false)}>Lưu báo giá</button>}
-          <button className="issue-button primary" disabled={busy || failedPhotos === null} onClick={() => finish(true)}><Printer size={18} />{busy || failedPhotos === null ? 'Đang chuẩn bị…' : preview.record ? 'In / Lưu PDF' : 'Lưu & in PDF'}</button></div>
+        <div><strong>{preview.record?.number || editing?.number || 'Xem trước báo giá'}</strong><small>{preview.data.pricesIncludeVat ? 'A4 ngang' : 'A4 dọc'} · Chọn “Lưu dưới dạng PDF” trong cửa sổ in.</small></div>
+        <div className="issue-preview-actions">{preview.record && <button className="issue-button secondary" disabled={busy} onClick={() => startEditing(preview.record!)}><Pencil size={18} />Sửa báo giá</button>}{!preview.record && <button className="issue-button secondary" disabled={busy} onClick={() => finish(false)}>{editing ? 'Lưu cập nhật' : 'Lưu báo giá'}</button>}
+          <button className="issue-button primary" disabled={busy || failedPhotos === null} onClick={() => finish(true)}><Printer size={18} />{busy || failedPhotos === null ? 'Đang chuẩn bị…' : preview.record ? 'In / Lưu PDF' : editing ? 'Cập nhật & in PDF' : 'Lưu & in PDF'}</button></div>
       </div>
       {failedPhotos > 0 && <p role="status" className="issue-error quotation-print-hide">{failedPhotos} ảnh sản phẩm chưa tải được. Bạn có thể in với ô ảnh trống{preview.record ? '.' : ' hoặc quay lại chọn ảnh khác.'}</p>}
       {error && <div role="alert" className="issue-error quotation-print-hide">{error}</div>}
-      <div className="quotation-paper-scroll"><QuotationPaper data={preview.data} number={preview.record?.number} /></div>
+      <div className="quotation-paper-scroll"><QuotationPaper data={editing && !preview.record && preview.data.companyId === editing.companyId
+        ? { ...preview.data, companyName: editing.companyName, companyAddress: editing.companyAddress } : preview.data}
+        number={preview.record?.number || editing?.number} /></div>
     </div>, document.body)}
   </div>;
 }

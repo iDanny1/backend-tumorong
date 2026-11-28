@@ -7,6 +7,7 @@ import { customerFromQuote, syncDocumentCustomer } from '../services/documentCus
 interface QuoteRecord {
   _id: Types.ObjectId;
   requestId: string;
+  revision?: string;
   number: string;
   data: QuoteData;
   companyName: string;
@@ -17,6 +18,7 @@ interface QuoteRecord {
 
 const schema = new Schema<QuoteRecord>({
   requestId: { type: String, unique: true, required: true },
+  revision: String,
   number: { type: String, unique: true, required: true },
   data: { type: Schema.Types.Mixed, required: true },
   companyName: { type: String, required: true },
@@ -31,7 +33,7 @@ const router = Router();
 
 function serialize(doc: QuoteRecord): SavedQuote {
   return {
-    ...doc.data, _id: String(doc._id), number: doc.number, requestId: doc.requestId,
+    ...doc.data, _id: String(doc._id), number: doc.number, requestId: doc.requestId, revision: doc.revision,
     companyName: doc.companyName, companyAddress: doc.companyAddress, createdAt: doc.createdAt.toISOString(),
   };
 }
@@ -72,6 +74,41 @@ function respondToRetry(res: Response, doc: QuoteRecord, data: QuoteData) {
   }
   return respondWithCustomer(res, doc);
 }
+
+router.put('/:id', async (req, res) => {
+  let data: QuoteData;
+  let requestId: string;
+  let baseRequestId: string;
+  try {
+    if (!/^[a-f\d]{24}$/i.test(req.params.id)) throw new Error('Mã báo giá không hợp lệ.');
+    data = normalizeQuote(req.body);
+    requestId = quoteRequestId(req.body?.requestId);
+    baseRequestId = quoteRequestId(req.body?.baseRequestId);
+    if (requestId === baseRequestId) throw new Error('Mã cập nhật báo giá không hợp lệ.');
+  } catch (error) {
+    return res.status(400).json({ message: (error as Error).message });
+  }
+  try {
+    const existing = await Quotation.findById(req.params.id).lean();
+    if (!existing) return res.status(404).json({ message: 'Không tìm thấy báo giá.' });
+    if (existing.revision === requestId) return respondToRetry(res, existing, data);
+    if ((existing.revision || existing.requestId) !== baseRequestId) {
+      return res.status(409).json({ message: 'Báo giá đã được người khác cập nhật. Vui lòng mở lại từ lịch sử trước khi sửa.' });
+    }
+    const company = quoteCompanies.find(option => option.id === data.companyId)!;
+    const doc = await Quotation.findOneAndUpdate(
+      { _id: existing._id, revision: existing.revision || { $exists: false } },
+      { $set: { data, revision: requestId, totals: quotePricing(data),
+        companyName: data.companyId === existing.data.companyId ? existing.companyName : company.name,
+        companyAddress: data.companyId === existing.data.companyId ? existing.companyAddress : company.address } },
+      { returnDocument: 'after', runValidators: true },
+    );
+    if (!doc) return res.status(409).json({ message: 'Báo giá vừa được cập nhật. Vui lòng mở lại từ lịch sử trước khi sửa.' });
+    return respondWithCustomer(res, doc);
+  } catch {
+    return res.status(500).json({ message: 'Chưa cập nhật được báo giá. Vui lòng thử lại.' });
+  }
+});
 
 router.post('/', async (req, res) => {
   let requestId: string;
