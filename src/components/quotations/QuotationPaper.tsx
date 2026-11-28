@@ -39,8 +39,8 @@ export function QuotationPaper({ data, number }: { data: PaperData; number?: str
   const pricing = quotePricing(data);
   const showQuantity = data.items.some(item => item.quantity != null);
   const showDiscount = data.items.some(item => item.discount > 0);
-  const splitDiscount = data.items.some(item => item.discountType === 'percent' && item.discount > 0);
-  const weights = data.pricesIncludeVat ? [3, 21, 4, 5, 9, 4, 9, 7, 9, 9, 11, 12, 11] : [3.5, ...(showQuantity ? [15.5, 5] : [20.5]), 5, 10.5,
+  const splitDiscount = data.items.some(item => item.discountType === 'percent' && (data.pricesIncludeVat || item.discount > 0));
+  const weights = data.pricesIncludeVat ? [3, 21, 4, 5, 9, 4, 9, ...(splitDiscount ? [5, 8] : [7]), 9, 9, 11, 12, 11] : [3.5, ...(showQuantity ? [15.5, 5] : [20.5]), 5, 10.5,
     ...(splitDiscount ? [6, 10] : showDiscount ? [10] : []), 12, 12, 15, 12.5];
   const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
   return <article className={`quotation-paper${data.pricesIncludeVat ? ' quotation-paper-wide' : ''}`} lang="vi" aria-label="Báo giá">
@@ -71,7 +71,8 @@ export function QuotationPaper({ data, number }: { data: PaperData; number?: str
         <th scope="col">STT</th><th scope="col">Sản phẩm</th>
         <th scope="col">ĐVT</th><th scope="col">Số lượng</th>
         <th scope="col">Đơn giá<br />(-VAT)</th><th scope="col">VAT</th>
-        <th scope="col">Đơn giá<br />(+VAT)</th><th scope="col">Chiết khấu</th>
+        <th scope="col">Đơn giá<br />(+VAT)</th>
+        {splitDiscount ? <th scope="colgroup" colSpan={2}>Chiết khấu</th> : <th scope="col">Chiết khấu</th>}
         <th scope="col">Giá bán (-VAT)<br />sau CK</th><th scope="col">Giá bán (+VAT)<br />sau CK</th>
         <th scope="col">Thành tiền<br />(+VAT)</th>
         <th scope="col">Hình ảnh sản phẩm</th><th scope="col">Ghi chú / Quy cách đóng gói</th>
@@ -92,6 +93,8 @@ export function QuotationPaper({ data, number }: { data: PaperData; number?: str
         const netAfter = quantity ? (pricing.taxable[index] == null ? null : pricing.taxable[index] / quantity)
           : item.discountType === 'percent' ? netUnit * (1 - item.discount / 100) : item.discount === 0 ? netUnit : null;
         const grossAfter = quantity ? (lineTotal == null ? null : lineTotal / quantity) : netAfter == null ? null : netAfter * factor;
+        const unitDiscount = quantity && pricing.discounts[index] != null ? pricing.discounts[index] / quantity
+          : item.discountType === 'percent' ? netUnit * item.discount / 100 : item.discount === 0 ? 0 : null;
         return <tbody key={index}><tr>
         <td className="quote-paper-center">{index + 1}</td>
         <td className="quote-paper-name">{item.gift ? <>
@@ -104,7 +107,10 @@ export function QuotationPaper({ data, number }: { data: PaperData; number?: str
           <td className="quote-paper-numeric">{unitMoney(netUnit)}</td>
           <td className="quote-paper-center">{item.vatRate}%</td>
           <td className="quote-paper-numeric">{money(item.unitPrice)}</td>
-          <td className="quote-paper-numeric quote-paper-discount">{money(item.discount)}{item.discountType === 'percent' ? '%' : ' đ / dòng'}</td>
+          {splitDiscount ? <>
+            <td className="quote-paper-center quote-paper-discount">{item.discountType === 'percent' ? `${money(item.discount)}%` : '—'}</td>
+            <td className="quote-paper-numeric quote-paper-discount">{unitDiscount == null ? '—' : unitMoney(unitDiscount)}</td>
+          </> : <td className="quote-paper-numeric quote-paper-discount">{money(item.discount)}{item.discountType === 'percent' ? '%' : ' đ / dòng'}</td>}
           <td className="quote-paper-numeric">{netAfter == null ? '—' : unitMoney(netAfter)}</td>
           <td className="quote-paper-numeric">{grossAfter == null ? '—' : unitMoney(grossAfter)}</td>
           <td className="quote-paper-numeric">{lineTotal != null && money(lineTotal)}</td>

@@ -1,0 +1,103 @@
+<!doctype html><meta charset="utf-8"><style>.quotation-paper {
+  box-sizing: border-box;
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 10mm 8mm;
+  background: white;
+  color: #161612;
+  font: 10.5pt/1.32 'Times New Roman', Times, serif;
+  text-align: left;
+  overflow-wrap: anywhere;
+  box-shadow: 0 2px 16px #12332722;
+}
+.quotation-paper :is(h1, p, dl, dd) { margin: 0; }
+.quotation-paper-wide { width: 297mm; min-height: 210mm; }
+.quote-paper-header { text-align: center; }
+.quote-paper-issuer { text-align: left; }
+.quote-paper-issuer strong { font-size: 12pt; }
+.quote-paper-issuer p { margin-top: 1mm; font-size: 9.5pt; }
+.quote-paper-heading { padding: 7mm 0 4mm; }
+.quote-paper-heading h1 { color: #385727; font: bold 21pt/1.15 'Times New Roman', Times, serif; }
+.quote-paper-dates { display: flex; flex-wrap: wrap; justify-content: center; gap: 1mm 3mm; padding-top: 1.4mm; font-size: 9pt; }
+.quote-paper-dates span + span { padding-left: 3mm; border-left: .5pt solid #aaa; }
+.quote-paper-info { font-size: 10pt; }
+.quote-paper-recipient { font-weight: bold; margin-bottom: 1mm !important; }
+.quote-paper-lines {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 9pt;
+  line-height: 1.22;
+}
+.quote-paper-lines caption { text-align: right; padding-bottom: 1mm; font-size: 8pt; font-style: italic; }
+.quote-paper-lines th, .quote-paper-lines td { border: .65pt solid #292922; padding: 1.6mm 1mm; vertical-align: middle; }
+.quote-paper-lines th { text-align: center; font-size: 8pt; line-height: 1.15; text-transform: uppercase; font-weight: bold; padding: 2mm .4mm; }
+.quote-paper-lines th:first-child { white-space: nowrap; padding-inline: 0; }
+.quote-paper-name, .quote-paper-packaging { white-space: pre-line; }
+.quote-paper-center, .quote-paper-image, .quote-paper-packaging { text-align: center; }
+.quote-paper-lines .quote-paper-image { padding: .8mm; }
+.quote-paper-image-frame { width: 100%; height: 32mm; display: grid; place-items: center; overflow: hidden; }
+.quote-paper-image img { width: 100%; max-width: 100%; height: 32mm; max-height: 100%; min-width: 0; display: block; object-fit: contain; object-position: center; }
+.quote-paper-image-note { color: #555; font-size: 8pt; }
+.quote-paper-numeric { text-align: right; font-variant-numeric: tabular-nums; }
+.quote-paper-numeric small { display: block; margin-top: .8mm; font-size: 7.8pt; }
+.quote-paper-discount { background: #e5efdd; }
+.quote-paper-ending { display: flex; justify-content: space-between; align-items: flex-start; gap: 6mm; padding-top: 3mm; break-inside: avoid; }
+.quote-paper-lines .quote-paper-summary-cell { border: none; padding: 0; }
+.quote-paper-notes { flex: 1; padding: 1mm 0; font-size: 9pt; }
+.quote-paper-notes p + p { margin-top: 2mm; }
+.quote-paper-totals { width: 40%; font-size: 9pt; }
+.quote-paper-totals > div { display: flex; justify-content: space-between; gap: 2mm; padding: .8mm 1mm; }
+.quote-paper-totals dd { text-align: right; font-variant-numeric: tabular-nums; }
+.quote-paper-grand { border-top: .8pt solid #333; font-size: 10.5pt; font-weight: bold; }
+
+@page quotation {
+  size: A4 portrait;
+  margin: 10mm 8mm;
+  @bottom-right { content: counter(page) " / " counter(pages); font: 8pt Arial, sans-serif; color: #52645b; }
+}
+@page quotation-wide {
+  size: A4 landscape;
+  margin: 10mm 8mm;
+  @bottom-right { content: counter(page) " / " counter(pages); font: 8pt Arial, sans-serif; color: #52645b; }
+}
+@media print {
+  body:has(.quotation-preview-root) > :not(.quotation-preview-root),
+  .quotation-preview-root .quotation-print-hide { display: none !important; }
+  html:has(.quotation-preview-root), body:has(.quotation-preview-root),
+  .quotation-preview-root, .quotation-preview-root .quotation-paper-scroll {
+    position: static !important;
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: white !important;
+  }
+  .quotation-preview-root, .quotation-paper { page: quotation; }
+  .quotation-preview-root:has(.quotation-paper-wide), .quotation-paper-wide { page: quotation-wide; }
+  .quotation-paper {
+    width: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .quote-paper-lines thead { display: table-header-group; }
+  .quote-paper-lines tbody, .quote-paper-lines tr, .quote-paper-header { break-inside: avoid; }
+}
+
+body { margin:0; padding:16px; background:#fff; }
+.quotation-paper { width:340px; min-height:0; padding:0; margin:0; box-shadow:none; }
+.quote-paper-header,.quote-paper-info,.quote-paper-summary-cell,.quote-paper-notes,caption { display:none!important; }
+colgroup { display:none; }
+.quote-paper-lines { width:340px; table-layout:auto; font-size:18px; }
+.quote-paper-lines th { font-size:18px; height:60px; text-transform:none; }
+thead th:not(:nth-child(8)),tbody tr td:not(:nth-child(8)):not(:nth-child(9)) { display:none; }
+.quote-paper-lines tbody tr td { height:74px; width:50%; padding:10px; background:#e5efdd; }
+.quote-paper-lines tbody tr:has(.quote-paper-summary-cell) { display:none; }
+</style><article class="quotation-paper quotation-paper-wide" lang="vi" aria-label="Báo giá"><header class="quote-paper-header"><div class="quote-paper-issuer"><strong></strong><p>Địa chỉ: </p></div><div class="quote-paper-heading"><h1>BẢNG GIÁ SẢN PHẨM</h1><p class="quote-paper-dates"><span>Ngày 28/11/2026</span></p></div></header><section class="quote-paper-info"><p class="quote-paper-recipient"><span>Kính gửi:</span> <strong>Anh </strong></p><p>Chúng tôi trân trọng gửi Quý khách bảng giá sản phẩm như sau.</p></section><p class="quote-paper-info">Đơn giá đã gồm VAT; chiết khấu tính trên giá chưa VAT.</p><table class="quote-paper-lines" aria-label="Chi tiết sản phẩm"><caption>Đơn vị tiền: đồng (VND)</caption><colgroup><col style="width:2.5%"/><col style="width:17.5%"/><col style="width:3.3333333333333335%"/><col style="width:4.166666666666666%"/><col style="width:7.5%"/><col style="width:3.3333333333333335%"/><col style="width:7.5%"/><col style="width:4.166666666666666%"/><col style="width:6.666666666666667%"/><col style="width:7.5%"/><col style="width:7.5%"/><col style="width:9.166666666666666%"/><col style="width:10%"/><col style="width:9.166666666666666%"/></colgroup><thead><tr><th scope="col">STT</th><th scope="col">Sản phẩm</th><th scope="col">ĐVT</th><th scope="col">Số lượng</th><th scope="col">Đơn giá<br/>(-VAT)</th><th scope="col">VAT</th><th scope="col">Đơn giá<br/>(+VAT)</th><th scope="colgroup" colSpan="2">Chiết khấu</th><th scope="col">Giá bán (-VAT)<br/>sau CK</th><th scope="col">Giá bán (+VAT)<br/>sau CK</th><th scope="col">Thành tiền<br/>(+VAT)</th><th scope="col">Hình ảnh sản phẩm</th><th scope="col">Ghi chú / Quy cách đóng gói</th></tr></thead><tbody><tr><td class="quote-paper-center">1</td><td class="quote-paper-name">Hộp quà Tết</td><td class="quote-paper-center">Hộp</td><td class="quote-paper-center">8</td><td class="quote-paper-numeric">2.400.000</td><td class="quote-paper-center">10%</td><td class="quote-paper-numeric">2.640.000</td><td class="quote-paper-center quote-paper-discount">30%</td><td class="quote-paper-numeric quote-paper-discount">720.000</td><td class="quote-paper-numeric">1.680.000</td><td class="quote-paper-numeric">1.848.000</td><td class="quote-paper-numeric">14.784.000</td><td class="quote-paper-image"><div class="quote-paper-image-frame"><span class="quote-paper-image-note">—</span></div></td><td class="quote-paper-packaging">—</td></tr></tbody><tbody><tr><td class="quote-paper-center">2</td><td class="quote-paper-name">Hộp quà Tết</td><td class="quote-paper-center">Hộp</td><td class="quote-paper-center">8</td><td class="quote-paper-numeric">2.400.000</td><td class="quote-paper-center">10%</td><td class="quote-paper-numeric">2.640.000</td><td class="quote-paper-center quote-paper-discount">10%</td><td class="quote-paper-numeric quote-paper-discount">240.000</td><td class="quote-paper-numeric">2.160.000</td><td class="quote-paper-numeric">2.376.000</td><td class="quote-paper-numeric">19.008.000</td><td class="quote-paper-image"><div class="quote-paper-image-frame"><span class="quote-paper-image-note">—</span></div></td><td class="quote-paper-packaging">—</td></tr><tr><td colSpan="14" class="quote-paper-summary-cell"><div class="quote-paper-ending"><div class="quote-paper-notes"><p><b>Bằng chữ</b><br/>Ba mươi ba triệu bảy trăm chín mươi hai nghìn đồng</p></div><dl class="quote-paper-totals"><div><dt>Tiền hàng</dt><dd>38.400.000</dd></div><div><dt>Chiết khấu</dt><dd>7.680.000</dd></div><div><dt>Tổng chưa VAT</dt><dd>30.720.000</dd></div><div class="quote-paper-grand"><dt>Tổng cộng</dt><dd>33.792.000 đ</dd></div></dl></div></td></tr></tbody></table></article>

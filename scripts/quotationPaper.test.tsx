@@ -78,7 +78,7 @@ test('inclusive quote paper shows the full unit-price breakdown and keeps thirte
       assert.match(html, /quotation-paper-wide/);
       assert.match(html, /Đơn giá<br\s*\/?>\(\+VAT\)/);
       assert.match(html, /2\.643\.400/);
-      const count = 13;
+      const count = discountType === 'percent' ? 14 : 13;
       assert.equal((html.match(/<col style=/g) || []).length, count);
       assert.equal((html.match(/<td /g) || []).length, count + (quantity == null ? 0 : 1));
       if (quantity != null) assert.match(html, new RegExp(`colSpan="${count}" class="quote-paper-summary-cell"`));
@@ -101,4 +101,23 @@ test('inclusive unit prices after a whole-line discount agree with the line tota
   assert.deepEqual(cells.slice(2, 11), ['Box', '8', '2.400.000', '10%', '2.640.000',
     '80.000 đ / dòng', '2.390.000', '2.629.000', '21.032.000']);
   assert.equal(cells[12], 'Handle with care');
+});
+
+test('inclusive percentage discounts show the rate and pre-VAT money saved per item', () => {
+  for (const quantity of [null, 8]) {
+    const item: QuoteData['items'][number] = {
+      productId: '', name: 'Gift', unit: 'Box', quantity, unitPrice: 2640000,
+      discount: 30, discountType: 'percent', vatRate: 10, imageUrl: '', packaging: '',
+    };
+    const html = renderToStaticMarkup(<QuotationPaper data={{ ...freshQuote(), pricesIncludeVat: true, items: [item] }} />);
+    assert.match(html, /<th scope="colgroup" colSpan="2">Chiết khấu<\/th>/);
+    assert.doesNotMatch(html, /Tiền chiết khấu|Chiết khấu<br/);
+    const row = html.match(/<tbody><tr>([\s\S]*?)<\/tr>/)![1];
+    const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(m => m[1]);
+    assert.equal(cells.length, 14);
+    assert.deepEqual(cells.slice(7, 9), ['30%', '720.000']);
+    assert.equal(cells[9], '1.680.000');
+    assert.equal(cells[10], '1.848.000');
+    if (quantity != null) assert.equal(cells[11], '14.784.000');
+  }
 });
