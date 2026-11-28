@@ -139,7 +139,7 @@ function QuoteLineEditor({ line, index, net, vat, images, products, pricesInclud
         </select></Field>
         <Amount label="Thành tiền (-VAT)" value={net} />
         <Amount label="Thành tiền (+VAT)" value={net !== null && vat !== null ? net + vat : null} />
-        <div className="issue-wide"><Field name="Quy cách đóng gói"><textarea rows={2} maxLength={500} value={line.packaging} placeholder="Chưa có quy cách" onChange={event => update({ packaging: event.target.value })} /></Field></div>
+        <div className="issue-wide"><Field name="Ghi chú / Quy cách đóng gói"><textarea rows={2} maxLength={500} value={line.packaging} placeholder="Nhập ghi chú hoặc quy cách đóng gói" onChange={event => update({ packaging: event.target.value })} /></Field></div>
         <div className="issue-wide"><Field name="Hình ảnh sản phẩm"><select value={line.imageUrl} onChange={event => update({ imageUrl: event.target.value })}>
           <option value="">Không dùng ảnh</option>
           {photos.map((url, i) => <option key={url} value={url}>Ảnh {i + 1}</option>)}
@@ -344,7 +344,7 @@ export function QuotationManagement({ products, customers, user, onDocumentTypeC
       }}>
       <div className="issue-preview-toolbar quotation-print-hide">
         <button autoFocus className="issue-button secondary" disabled={busy} onClick={() => { setPreview(null); setError(''); }}><ChevronLeft size={18} />Quay lại</button>
-        <div><strong>{preview.record?.number || 'Xem trước báo giá'}</strong><small>A4 dọc · Chọn “Lưu dưới dạng PDF” trong cửa sổ in.</small></div>
+        <div><strong>{preview.record?.number || 'Xem trước báo giá'}</strong><small>{preview.data.pricesIncludeVat ? 'A4 ngang' : 'A4 dọc'} · Chọn “Lưu dưới dạng PDF” trong cửa sổ in.</small></div>
         <div className="issue-preview-actions">{!preview.record && <button className="issue-button secondary" disabled={busy} onClick={() => finish(false)}>Lưu báo giá</button>}
           <button className="issue-button primary" disabled={busy || failedPhotos === null} onClick={() => finish(true)}><Printer size={18} />{busy || failedPhotos === null ? 'Đang chuẩn bị…' : preview.record ? 'In / Lưu PDF' : 'Lưu & in PDF'}</button></div>
       </div>

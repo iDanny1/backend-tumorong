@@ -62,7 +62,7 @@ test('gift quote shows each topping name and only the combined price', () => {
   assert.match(html, /class="quote-paper-packaging">Red wrap<\/td>/);
 });
 
-test('inclusive quote paper shows both net and VAT totals and keeps table columns aligned', () => {
+test('inclusive quote paper shows the full unit-price breakdown and keeps thirteen columns aligned', () => {
   for (const quantity of [null, 8]) {
     for (const discountType of ['amount', 'percent'] as const) {
       const data: QuoteData = { ...freshQuote(), pricesIncludeVat: true, items: [{
@@ -70,14 +70,35 @@ test('inclusive quote paper shows both net and VAT totals and keeps table column
         discount: 10, discountType, vatRate: 10, imageUrl: '', packaging: '',
       }] };
       const html = renderToStaticMarkup(<QuotationPaper data={data} />);
-      assert.match(html, /Thành tiền <br\s*\/?>\(\+VAT\)/);
-      assert.match(html, /Thành tiền <br\s*\/?>\(-VAT\)/);
+      assert.match(html, /Thành tiền<br\s*\/?>\(\+VAT\)/);
+      assert.match(html, /Đơn giá<br\s*\/?>\(-VAT\)/);
+      assert.match(html, /Giá bán \(-VAT\)<br\s*\/?>sau CK/);
+      assert.match(html, /Giá bán \(\+VAT\)<br\s*\/?>sau CK/);
+      assert.match(html, /Ghi chú \/ Quy cách đóng gói/);
+      assert.match(html, /quotation-paper-wide/);
       assert.match(html, /Đơn giá<br\s*\/?>\(\+VAT\)/);
       assert.match(html, /2\.643\.400/);
-      const count = (quantity == null ? 9 : 10) + (discountType === 'percent' ? 1 : 0);
+      const count = 13;
       assert.equal((html.match(/<col style=/g) || []).length, count);
       assert.equal((html.match(/<td /g) || []).length, count + (quantity == null ? 0 : 1));
       if (quantity != null) assert.match(html, new RegExp(`colSpan="${count}" class="quote-paper-summary-cell"`));
     }
   }
+});
+
+test('inclusive unit prices after a whole-line discount agree with the line total', () => {
+  const data: QuoteData = { ...freshQuote(), pricesIncludeVat: true, items: [{
+    productId: '', name: 'Gift', unit: 'Box', quantity: 8, unitPrice: 2640000,
+    discount: 80000, discountType: 'amount', vatRate: 10, imageUrl: '', packaging: 'Handle with care',
+  }] };
+  const html = renderToStaticMarkup(<QuotationPaper data={data} />);
+  const headers = [...html.matchAll(/<th scope="col">([\s\S]*?)<\/th>/g)].map(m => m[1]);
+  assert.equal(headers.length, 13);
+  assert.deepEqual(headers.slice(4, 11), ['Đơn giá<br/>(-VAT)', 'VAT', 'Đơn giá<br/>(+VAT)',
+    'Chiết khấu', 'Giá bán (-VAT)<br/>sau CK', 'Giá bán (+VAT)<br/>sau CK', 'Thành tiền<br/>(+VAT)']);
+  const row = html.match(/<tbody><tr>([\s\S]*?)<\/tr>/)![1];
+  const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(m => m[1]);
+  assert.deepEqual(cells.slice(2, 11), ['Box', '8', '2.400.000', '10%', '2.640.000',
+    '80.000 đ / dòng', '2.390.000', '2.629.000', '21.032.000']);
+  assert.equal(cells[12], 'Handle with care');
 });

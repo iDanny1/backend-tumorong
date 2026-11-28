@@ -12,6 +12,7 @@
   box-shadow: 0 2px 16px #12332722;
 }
 .quotation-paper :is(h1, p, dl, dd) { margin: 0; }
+.quotation-paper-wide { width: 297mm; min-height: 210mm; }
 .quote-paper-header { text-align: center; }
 .quote-paper-issuer { text-align: left; }
 .quote-paper-issuer strong { font-size: 12pt; }
@@ -56,6 +57,11 @@
   margin: 10mm 8mm;
   @bottom-right { content: counter(page) " / " counter(pages); font: 8pt Arial, sans-serif; color: #52645b; }
 }
+@page quotation-wide {
+  size: A4 landscape;
+  margin: 10mm 8mm;
+  @bottom-right { content: counter(page) " / " counter(pages); font: 8pt Arial, sans-serif; color: #52645b; }
+}
 @media print {
   body:has(.quotation-preview-root) > :not(.quotation-preview-root),
   .quotation-preview-root .quotation-print-hide { display: none !important; }
@@ -71,6 +77,7 @@
     background: white !important;
   }
   .quotation-preview-root, .quotation-paper { page: quotation; }
+  .quotation-preview-root:has(.quotation-paper-wide), .quotation-paper-wide { page: quotation-wide; }
   .quotation-paper {
     width: 100%;
     min-height: 0;
